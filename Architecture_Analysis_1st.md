@@ -11,4 +11,18 @@
      - *Kafka brokers*: Core server node that store, replicate, and manage data streams
      - A cell may cell may correspond to: A region/availability-zone group/business unit/regulated environment/accelerator type/trust tier
      - Scheduler returns a stable cell assignment, the *run coordinator* then submits Ray tasks and actor inside that cell
-  3. **Run execution model**: A run (a single end-to-end execution of a process (Ex: *executing a CI/CD pipeline*, *running an LLM agent workflow*)) is a durable (Every step is persisted to persist storage for fault tolerance and re-readability) platform entity () that contains tasks, actor session, tool invocation, 
+  3. **Run execution model**: A run (a single end-to-end execution of a process (Ex: *executing a CI/CD pipeline*, *running an LLM agent workflow*)) is a durable (Every step is persisted to persist storage for fault tolerance and re-readability) platform entity (A component tracked within a network or observability platform) that contains tasks, actor session, tool invocation, approvals, checkpoints, and child runs
+     ```
+     Lifecycle:
+     Submitted
+       -> Admitted
+       -> Assigned to Cell
+       -> Starting
+       -> Running
+       -> Waiting for tool | Waiting for event | Waiting for approval
+       -> Succeeded | Failed | Canceled | Timed out
+     ```
+     - Each task attempt has a separate state machine:
+       ```
+       Pending -> Leased -> Dispatched 
+       ```

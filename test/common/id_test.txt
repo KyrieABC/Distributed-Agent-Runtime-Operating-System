@@ -1,0 +1,28 @@
+// Using the same namespace name "dar", it will expand across files
+
+dar::detail ->
+GenerateRandomIDBytes (IdByte(128-bit, 16 byte) type):
+  Generate a random number for each bytes
+ParseHexID (From hex ID (32 bytes) to Idbytes (16 bytes) type ID)
+  Conversion using a private (to that id.cpp file) kHexDigit(0123456789abcdef)
+HexID (from Idbytes (16 bytes) ID to a hex ID (32 bytes))
+
+StrongID class ->
+public default constructor
+  -> member bytes_ use value-initialization, this initializes all 16 bytes to 0 (nil-ID)
+private constructor
+  -> marked private to force users to create ID through explicit static methods (Nil(), Random(), FromHex())
+Nil()
+  -> Returns an all-zero StrongID
+Random()
+  -> Generates and returns StrongID filled with random bytes by GenerateRandomIDBytes()
+FromHex()
+  -> from hexidecimal to StrongID object (return StrongID(*bytes))
+IsNil()
+  -> Iterate through every byte i nbytes_, return true if all bytes are 0
+Hex()
+  -> Convert byte_ into human0readable hexidecimal std::string by calling HexID()
+bytes()
+  -> getter for bytes_
+
+*bytes or bytes-> will work because of std::optional(FromHex() -> return StrongID(*bytes))

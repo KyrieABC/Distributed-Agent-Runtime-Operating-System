@@ -95,22 +95,64 @@ namespace dar
         TEST(ExecutionTest, RunningRecordsStartTime)
         {
             const WallTime created_at = WallTimeNow();
-
-
             const WallTime queued_at = created_at + std::chrono::seconds(1);
-
-
             const WallTime scheduled_at = created_at + std::chrono::seconds(2);
-
-
             const WallTime running_at = created_at + std::chrono::seconds(3);
 
+            Execution execution(ExecutionID::Random(), TenantID::Random(), TaskID::Random(),AgentID::Random(), 1, ResourceRequest{},created_at);
 
+            // See if it can be transition to queued at a specific time
+            ASSERT_TRUE(execution.TransitionTo(ExecutionState::kQueued,queued_at).ok());
 
+            ASSERT_TRUE(execution.TransitionTo(ExecutionState::kScheduled,scheduled_at).ok());
 
+            ASSERT_TRUE(execution.TransitionTo(ExecutionState::kRunning, running_at).ok());
 
+            EXPECT_EQ(execution.state(), ExecutionState::kRunning);
 
-            // For a new test huh
+            // see if the started_at_ variable is set through TransitionTo
+            ASSERT_TRUE(execution.started_at().has_value());
+            
+            // What is this? 
+            EXPECT_EQ(*execution.started_at(), running_at);
+
+            // This should be false because the state has never transitioned and updated to terminal state
+            EXPECT_FALSE(execution.finished_at().has_value());
+            EXPECT_FALSE(execution.terminal());
         }
+
+        TEST(ExecutionTest, SucccessRecordsFinishTime)
+        {
+            const WallTime created_at = WallTimeNow();
+            const WallTime queued_at = created_at + std::chrono::seconds(1);
+            const WallTime scheduled_at = created_at + std::chrono::seconds(2);
+            const WallTime running_at = created_at + std::chrono::seconds(3);
+            const WallTime succeed_at = created_at + std::chrono::seconds(10);
+
+            Execution execution(ExecutionID::Random(), TenantID::Random(), TaskID::Random(),AgentID::Random(), 1, ResourceRequest{},created_at);
+
+            ASSERT_TRUE(execution.TransitionTo(ExecutionState::kQueued,queued_at).ok());
+
+            ASSERT_TRUE(execution.TransitionTo(ExecutionState::kScheduled,scheduled_at).ok());
+
+            ASSERT_TRUE(execution.TransitionTo(ExecutionState::kRunning, running_at).ok());
+
+            ASSERT_TRUE(execution.TransitionTo(ExecutionState::kSSucceeded, succeed_at).ok());
+
+            EXPECT_EQ(execution.state(), ExecutionState::kSSucceeded);
+
+            EXPECT_TRUE(execution.terminal());
+
+            ASSERT_TRUE(execution.started_at().has_value());
+
+            // The time that set started_at should be when state = kRunning
+            EXPECT_EQ(*execution.started_at(), running_at);
+
+            ASSERT_TRUE(execution.finished_at().has_value());
+
+            EXPECT_EQ(*execution.finished_at(),succeed_at);
+        }
+
+        
     }
 }

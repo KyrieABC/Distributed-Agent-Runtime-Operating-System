@@ -94,7 +94,7 @@ namespace dar::detail
              * 10->1010, 7->0111. 10100111->0XA7
              */
             // bytes[0] -> 0XA7 (1byte=8bits=2hex)
-            bytes[i]=static_cast<std::uint8_t>(static_cast<unsigned int>(high)<< 4U) | static_cast<unsigned int>(low);
+            bytes[i]=static_cast<std::uint8_t>((static_cast<unsigned int>(high)<< 4U) | static_cast<unsigned int>(low));
         }
         return bytes;
     }

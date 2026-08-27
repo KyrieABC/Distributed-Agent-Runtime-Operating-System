@@ -91,7 +91,7 @@ namespace dar
 
             ASSERT_TRUE(Lifecycle.TransitionTo(ExecutionState::kQueued).ok());
 
-            EXPECT_TRUE(Lifecycle.TransitionTo(ExecutionState::kCancelled));
+            EXPECT_TRUE(Lifecycle.TransitionTo(ExecutionState::kCancelled).ok());
 
             EXPECT_EQ(Lifecycle.state(), ExecutionState::kCancelled);
 
@@ -107,6 +107,8 @@ namespace dar
             ASSERT_TRUE(Lifecycle.TransitionTo(ExecutionState::kScheduled).ok());
 
             ASSERT_TRUE(Lifecycle.TransitionTo(ExecutionState::kRunning).ok());
+
+            ASSERT_TRUE(Lifecycle.TransitionTo(ExecutionState::kCancelled).ok());
 
             EXPECT_EQ(Lifecycle.state(), ExecutionState::kCancelled);
 

@@ -87,8 +87,14 @@ namespace dar
             {
                 return bytes_;
             }
-            friend bool operator==(const StrongID&,const StrongID&)=default;
-            friend bool operator!=(const StrongID&,const StrongID&)=default;
+            friend bool operator==(const StrongID& lhs,const StrongID& rhs)
+            {
+                return lhs.bytes_==rhs.bytes_;
+            }
+            friend bool operator!=(const StrongID& lhs,const StrongID& rhs)
+            {
+                return !(lhs.bytes_==rhs.bytes_);
+            }
             friend bool operator<(const StrongID& lhs, const StrongID& rhs) noexcept
             {
                 return lhs.bytes_ < rhs.bytes_;

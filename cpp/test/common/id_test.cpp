@@ -6,7 +6,7 @@
  * Malformed hex rejection
 */
 
-#include "cpp/src/dar/common/id.h"
+#include "dar/common/id.h"
 
 #include <type_traits>
 
@@ -71,13 +71,14 @@ namespace dar
 
         TEST(IdTest, ParsedUppercaseHex)
         {
-            const auto parsed = AgentID::FromHex("0123456789ABCDEF");
+            constexpr std::string_view hex =  "0123456789ABCDEFFEDCBA9876543210";
+            const auto parsed = AgentID::FromHex(hex);
 
             // If condition is false, it generates a failure and return to the header (drop immediately)
             ASSERT_TRUE(parsed.has_value());
 
             // When converted back(hex -> IdByte id), it should be all lowercase
-            EXPECT_EQ(parsed->Hex(),"0123456789abcdef");
+            EXPECT_EQ(parsed->Hex(),"0123456789abcdeffedcba9876543210");
         }
 
         // ?

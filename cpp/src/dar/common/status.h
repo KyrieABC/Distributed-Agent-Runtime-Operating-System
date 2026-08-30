@@ -41,6 +41,10 @@ namespace dar
         {
             return code_ == StatusCode::kOk;
         }
+        [[nodiscard]] bool IsCancelled() const noexcept
+        {
+            return code_== StatusCode::Kcancelled;
+        }
         [[nodiscard]] StatusCode code() const noexcept
         {
             return code_;

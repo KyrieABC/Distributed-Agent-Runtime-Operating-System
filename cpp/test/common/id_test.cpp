@@ -1,4 +1,12 @@
 /**
+ * Entire test command:
+ * cd ~/Distributed-Agent-Runtime-Operating-System/cpp
+ * cmake --build build
+ * ctest --test-dir build --output-on-failure
+ */
+
+
+/**
  * Test: 
  * type separation, 
  * Nil behavior, 

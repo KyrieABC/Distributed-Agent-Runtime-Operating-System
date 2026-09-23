@@ -68,7 +68,7 @@ namespace dar
                     worker_id, options_.resources_per_worker
                 );
 
-                if(status.ok())
+                if(!status.ok())
                 {
                     return status;
                 }

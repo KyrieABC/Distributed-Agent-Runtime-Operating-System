@@ -1,17 +1,3 @@
-#[[
-# rm -rf build
-
-cmake -S . -B build \
-    -DDAR_BUILD_PYTHON=OFF \
-    -DDAR_BUILD_TESTS=ON
-
-cmake --build build -j
-
-ctest --test-dir build -N
-
-ctest --test-dir build --output-on-failure
-]]
-
 # Distributed Agent Runtime (DAR)
 
 
@@ -124,7 +110,6 @@ endif()
 
 # C++ tests 
 if(DAR_BUILD_TESTS)
-    include(CTest)
     if(BUILD_TESTING)
         include(FetchContent)
 
@@ -132,15 +117,15 @@ if(DAR_BUILD_TESTS)
             googletest 
             URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.zip
         )
-
+    
         set(
             gtest_force_shared_crt
             ON 
             CACHE BOOL 
             ""
-            FORCE
+            FORCE 
         )
-
+ 
         FetchContent_MakeAvailable(googletest)
 
         add_executable(
@@ -154,21 +139,19 @@ if(DAR_BUILD_TESTS)
             test/core/resource_test.cpp 
 
             test/worker/executor_test.cpp 
-            test/phase1/runtime_stress_test.cpp 
+            test/phase1/runtime_stress_test.cpp
         )
 
         target_link_libraries(
-            dar_tests 
+            dar_tests
             PRIVATE 
                 dar 
-                GTest::gtest_main 
+                GTest::gtest_main
         )
 
         include(GoogleTest)
         gtest_discover_tests(dar_tests)
-
     endif()
-
 endif()
     
         

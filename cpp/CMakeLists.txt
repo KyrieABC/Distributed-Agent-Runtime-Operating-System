@@ -14,35 +14,12 @@ ctest --test-dir build --output-on-failure
 
 # Distributed Agent Runtime (DAR)
 
-cmake_minimum_required(VERSION 3.16)
-
-project(
-    DAR 
-    VERSION 0.2.0
-    LANGUAGES CXX
-)
-
 
 # C++ Configuration
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-
-
-# Build Options
-
-option(
-    DAR_BUILD_PYTHON
-    "Build the DAR python extension module"
-    OFF
-)
-
-option(
-    DAR_BUILD_TESTS
-    "Build DAR C++ test"
-    ON
-)
 
 
 # DAR native runtime library

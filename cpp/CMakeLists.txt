@@ -39,7 +39,7 @@ option(
 )
 
 option(
-    DAR_BUILD_TEST
+    DAR_BUILD_TESTS
     "Build DAR C++ test"
     ON
 )

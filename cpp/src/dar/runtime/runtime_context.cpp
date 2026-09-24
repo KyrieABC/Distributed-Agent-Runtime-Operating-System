@@ -20,7 +20,7 @@ namespace dar
 
         // assert(): see if the first impression evaluate to true and if not, the second argument is custom error message
         // using CancellationToken = std::shared_ptr<std::atomic_bool>; (CancellationToken cancellation_token)
-        assert(cancellation_token != nullptr && "RuntimeContext requires a cancellation token");
+        assert(cancellation_token_ != nullptr && "RuntimeContext requires a cancellation token");
     }
 
     bool RuntimeContext::IsCancellationRequested() const noexcept

@@ -28,11 +28,12 @@
 // If okay, doesn't return anything
 
 
-#define DAR_RETURN_IF_ERROR(expr)                     \
-    do{                                                \
-        const ::dar::Status _dar_status = (expr);      \
-        if(!_dar_status.ok())                          \
-        {                                              \
-            return _dar_status;                        \
-        }                                               \
-    }while(false)                                 
+#define DAR_RETURN_IF_ERROR(expr)                    \
+    do                                               \
+    {                                                \
+        const ::dar::Status _dar_status = (expr);   \
+        if (!_dar_status.ok())                       \
+        {                                            \
+            return _dar_status;                      \
+        }                                            \
+    } while (false)                            

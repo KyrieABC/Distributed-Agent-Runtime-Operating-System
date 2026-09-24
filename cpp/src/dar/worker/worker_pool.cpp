@@ -215,6 +215,13 @@ namespace dar
         return worker->Dispatch(std::move(work));
     }
 
+    void WorkerPool::SetIdleCallback(IdleCallback callback)
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        idle_callback_ = std::move(callback);
+    }
+
+
     void WorkerPool::OnWorkerIdle(WorkerID worker_id)
     {
         IdleCallback callback;

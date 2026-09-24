@@ -32,9 +32,9 @@ namespace dar
             return ExecutionOutcome{
                 Status::Internal("executor received an empty task handler"),""
             };
-
-            try 
-            {
+        }
+        try 
+        {
                 // Phase 1 result storage
                 /**
                  * For now a result is simply an opaque std::string
@@ -97,6 +97,5 @@ namespace dar
                     ""
                 };
             }
-        }
     }
 }

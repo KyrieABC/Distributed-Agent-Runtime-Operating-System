@@ -1,0 +1,76 @@
+# Tells Python packaing system how to invoke CMake 
+# "How does Python tooling build and isntall the DAR Python distribution?"
+# pyproject.toml -> root/CMakeLists.txt -> cpp/CmakeLists.txt
+# when running `python -m pip install -e ./python`, pip sees python/pyproject.toml
+
+# defines what Python needs to build your package
+[build-system]
+# Build dependencies, not runtime dependencies
+# needed because: scikit_build_core(bridges Python packaging <--> CMake), pybind11(provides Python/C++ binding infrastructure)
+# Connects directly: (cpp/CMakeLists.txt::DAR_BUILD_PYTHON)find_package(pybind11 CONFIG REQUIRED)
+requires = [
+    "scikit-build-core>=0.10",
+    "pybind11>=2.13"
+]
+# Use scikit-build-core as the Python build backend
+# (without a native extension, projects might use setuptools, hatchling,..)
+# Use scikit-build-core because Python package needs to invoke CMake to build C++
+# pip -> pyproject.toml -> scikit_build_core -> CMake -> C++ compiler + pybind11
+build-backend = "scikit_build_core.build"
+
+# standard Python package metadata
+[project]
+# distribution name 
+# pip distribution(dar-runtime). Python import(dar)
+# `pip install dar-runtime` == (Python) import dar
+name = "dar-runtime"
+# same version as CMake project version
+version = "0.2.0"
+description = "Python SDK for the Distributed Agent Runtime"
+requires-python = ">=3.10"
+
+# metadata
+authors = [
+    {name = "DAR Contributor" }
+]
+
+# package for package-index/tooling purposes
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: C++",
+    "Operating System :: OS Independent"
+]
+
+# DAR's installed Python SDK currently has no additional Python packages required at runtime
+# (build time)scikit-build-core, pybind11. (runtime) no external Python dependencies
+dependencies = []
+
+# Configuration specifically for scikit-build-core
+[tool.scikit-build]
+# pyproject.toml is within DAR/python/. Top-level CMake project is DAR/CMakeLists
+# .. go back to directory that contains python/ (which is root: DAR/)
+cmake.source-dir = ".."
+
+# pure-Python package to include in the wheel is: python/dar/
+# However, CMake separately installs `_dar.so` into `dar`
+# Final package(assembled from 2 sources): 
+# Pure python source (python/dar/) +
+# CMake install (_dar.so) -> dar/(also from python/ ??)
+wheel.packages = ["dar"]
+
+# where to put intermediate build artifacts
+# {wheel_tag} distinguishes different Python/platform combinations
+# source -> build/<Python-platform-specific-tag>/CMake cache, object files, libdar.a, _dar.so
+build-dir = "build/{wheel_tag}"
+
+# passes CMake definitions into your CMake configuration
+[tool.scikit-build.cmake.define]
+# Override defaults (DAR_BUILD_PYTHON off, DAR_BUILD_TESTS on) declared in root/CMakeLists.txt
+# -> Python packaging reverses both
+# Native C++ development: `cmake -S . -B build` produces
+# -> dar(YES) dar_tests(YES) _dar(NO)
+# Python package build: `pip install -e ./python` produces
+# -> dar(YES) dar_tests(NO) _dar(YES)
+DAR_BUILD_PYTHON = "ON"
+DAR_BUILD_TESTS = "OFF"

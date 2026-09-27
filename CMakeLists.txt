@@ -64,3 +64,6 @@ endif()
 # Tells CMake: Enter cpp/ and process cpp/CMakeLists.txt as part of this same build config
 # Also why in cpp/CMakelists.txt: simply write `if(DAR_BUILD_PYTHON)` without redefining
 add_subdirectory(cpp)
+
+# Phase 3 wire/network contracts
+add_subdirectory(proto)

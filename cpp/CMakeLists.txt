@@ -98,6 +98,45 @@ set_target_properties(
         POSITION_INDEPENDENT_CODE ON
 )
 
+# ============================================================
+# Phase 3 transport foundation
+# ============================================================
+
+add_library(
+    dar_phase3_transport
+    STATIC
+
+    src/dar/serialization/serialization.cpp
+
+    src/dar/rpc/connection_pool.cpp
+    src/dar/rpc/rpc_client.cpp
+    src/dar/rpc/rpc_server.cpp
+)
+
+target_include_directories(
+    dar_phase3_transport
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_compile_features(
+    dar_phase3_transport
+    PUBLIC
+        cxx_std_17
+)
+
+target_link_libraries(
+    dar_phase3_transport
+    PUBLIC
+        dar
+        dar_phase3_proto
+)
+
+set_target_properties(
+    dar_phase3_transport
+    PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+)
 
 # Python extensions
 # when python packaging occurs, pyproject.toml overrides it to ON
@@ -216,6 +255,9 @@ if(DAR_BUILD_TESTS)
 
             test/worker/executor_test.cpp 
             test/phase1/runtime_stress_test.cpp
+
+            test/phase3/serialization_test.cpp
+            test/phase3/transport_test.cpp
         )
 
         # gives dar_tests two dependencies:
@@ -226,6 +268,7 @@ if(DAR_BUILD_TESTS)
             dar_tests
             PRIVATE 
                 dar 
+                dar_phase3_transport
                 GTest::gtest_main
         )
 

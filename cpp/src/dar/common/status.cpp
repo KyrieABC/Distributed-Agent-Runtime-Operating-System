@@ -115,6 +115,8 @@ namespace dar
                 return "Deadline_Exceeded";
             case StatusCode::KInternal:
                 return "Internal";
+            case StatusCode::KResourceExhausted:
+                return "Resource_Exhausted";
         }
         return "Unknown";
     }

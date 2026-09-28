@@ -60,10 +60,11 @@ Later(cpp/CMakeLists.txt): if(DAR_BUILD_TESTS): if(BUILD_TESTING)
     include(CTest)
 endif()
 
+# Phase 3 wire/network contracts
+# Must be defined before cpp/ because Stage-2 transport links against dar_phase3_proto
+add_subdirectory(proto)
+
 # bridge between 2 CMake files 
 # Tells CMake: Enter cpp/ and process cpp/CMakeLists.txt as part of this same build config
 # Also why in cpp/CMakelists.txt: simply write `if(DAR_BUILD_PYTHON)` without redefining
 add_subdirectory(cpp)
-
-# Phase 3 wire/network contracts
-add_subdirectory(proto)

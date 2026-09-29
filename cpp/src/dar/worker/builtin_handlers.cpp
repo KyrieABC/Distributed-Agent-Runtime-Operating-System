@@ -1,0 +1,78 @@
+#include "dar/worker/builtin_handlers.h"
+
+#include <cstddef>
+#include <string>
+#include <string_view>
+
+namespace dar
+{
+namespace
+{
+
+Status BuiltinSquare(
+    const TaskSpec&,
+    RuntimeContext& context,
+    std::string_view payload,
+    std::string_view payload_media_type,
+    std::string* result)
+{
+    if(result == nullptr)
+    {
+        return Status::InvalidArgument(
+            "result output must not be null");
+    }
+
+    if(payload_media_type != "text/plain")
+    {
+        return Status::InvalidArgument(
+            "builtin.square requires payload_media_type=text/plain");
+    }
+
+    if(context.IsCancellationRequested())
+    {
+        return Status::Cancelled(
+            "builtin.square cancelled before execution");
+    }
+
+    if(payload.empty())
+    {
+        return Status::InvalidArgument(
+            "builtin.square payload cannot be empty");
+    }
+
+    try
+    {
+        const std::string input(payload);
+
+        std::size_t consumed = 0;
+        const long long value = std::stoll(input, &consumed);
+
+        if(consumed != input.size())
+        {
+            return Status::InvalidArgument(
+                "builtin.square payload must contain one integer");
+        }
+
+        const long long squared = value * value;
+
+        *result = std::to_string(squared);
+
+        return Status::OK();
+    }
+    catch(const std::exception&)
+    {
+        return Status::InvalidArgument(
+            "builtin.square payload must contain a valid integer");
+    }
+}
+
+}  // namespace
+
+Status RegisterBuiltinHandlers(HandlerRegistry& registry)
+{
+    return registry.Register(
+        "builtin.square",
+        BuiltinSquare);
+}
+
+}  // namespace dar

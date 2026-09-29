@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package dar.proto.v1;
+
+import "google/protobuf/timestamp.proto";
+// allow 1 .proto file to reuse message and enum definitions declared in another .proto file
+import "common.proto";
+
+enum TaskState
+{
+  TASK_STATE_UNSPECIFIED = 0;
+  TASK_STATE_QUEUED = 1;
+  TASK_STATE_SCHEDULED = 2;
+  TASK_STATE_RUNNING = 3;
+  TASK_STATE_CANCEL_REQUESTED = 4;
+  TASK_STATE_SUCCEEDED = 5;
+  TASK_STATE_FAILED = 6;
+  TASK_STATE_CANCELLED = 7;
+}
+
+// One concrete distributed execution attempt
+// TaskId remains stable across future retries; ExecutionId identifies this attempt
+message TaskDescriptor
+{
+  TaskId task_id = 1;
+  ExecutionId execution_id = 2;
+  uint32 attempt = 3;
+  string entrypoint = 4;
+  ResourceSet resources = 5;
+  bytes payload = 6;
+  string payload_media_type = 7;
+  google.protobuf.Timestamp submitted_at = 8;
+  TenantId tenant_id = 9;
+  AgentId agent_id = 10;
+  string name = 11;
+}
+
+message TaskInfo {
+  TaskDescriptor task = 1;
+  TaskState state = 2;
+  NodeId assigned_node_id = 3;
+  WorkerId assigned_worker_id = 4;
+  Status status = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}

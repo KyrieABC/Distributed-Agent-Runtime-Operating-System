@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+// package declaration acts as a namespace
+// When this proto file compiles into code, all these classes/structs will be nested inside `dar.proto.v1` package to prevent naming collisions with other protocols
+package dar.proto.v1;
+
+// Wire identities preserve DAR's 16-byte StrongID representation
+// Serialization adapters must reject values whose size is not exactly 16 bytes
+message AgentId      { bytes value = 1; }
+message TaskId       { bytes value = 1; }
+message ExecutionId  { bytes value = 1; }
+message ObjectId     { bytes value = 1; }
+message WorkerId     { bytes value = 1; }
+message NodeId       { bytes value = 1; }
+message TenantId     { bytes value = 1; }
+message DeploymentId { bytes value = 1; }
+
+enum StatusCode
+{
+  STATUS_CODE_UNSPECIFIED = 0;
+  STATUS_CODE_OK = 1;
+  STATUS_CODE_INVALID_ARGUMENT = 2;
+  STATUS_CODE_NOT_FOUND = 3;
+  STATUS_CODE_ALREADY_EXISTS = 4;
+  STATUS_CODE_FAILED_PRECONDITION = 5;
+  STATUS_CODE_UNAVAILABLE = 6;
+  STATUS_CODE_RESOURCE_EXHAUSTED = 7;
+  STATUS_CODE_CANCELLED = 8;
+  STATUS_CODE_DEADLINE_EXCEEDED = 9;
+  STATUS_CODE_INTERNAL = 10;
+}
+
+// Runtime-semantic status. This is intentionally distinct from grpc::Status
+message Status {
+    StatusCode code = 1;
+    string message = 2;
+}
+
+// Transport representatoin only. DAR's internal ResourceSet remains fixed-point
+message ResourceSet
+{
+    map<string, double> quantities = 1;
+}

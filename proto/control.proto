@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package dar.proto.v1;
+
+import "google/protobuf/duration.proto";
+import "common.proto";
+import "node.proto";
+import "task.proto";
+
+/**
+
+Intended Architecture:
+Python (runtime.submit(...))
+-> C++ ClusterRuntime (SubmitTask RPC)
+-> ControlService (ControlPlane is server here)
+  - ControlPlane (choose a Node)
+-> NodeManager / WorkerService client (LaunchTask RPC)
+  - WorkerService 
+-> Phase 1 Runtime
+-> Local Scheduler 
+-> Worker
+*/
+// These rpc are used from (client)Worker Node -> (server)Control Plane/ NodeManager
+service ControlService {
+  // only the contract, no actual network behavior has been implemented yet
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
+  rpc RemoveNode(RemoveNodeRequest) returns (RemoveNodeResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskResponse);
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+  rpc GetResult(GetResultRequest) returns (GetResultResponse);
+  rpc ReportTaskResult(ReportTaskResultRequest) returns (ReportTaskResultResponse);
+}
+
+message RegisterNodeRequest { NodeDescriptor node = 1; }
+message RegisterNodeResponse { Status status = 1; }
+
+message RemoveNodeRequest {
+  NodeId node_id = 1;
+  uint64 incarnation = 2;
+}
+message RemoveNodeResponse { Status status = 1; }
+
+message HeartbeatRequest { NodeHeartbeat heartbeat = 1; }
+message HeartbeatResponse { Status status = 1; }
+
+// Submission describes portable code identity + payload; the control plane creates
+// TaskId/ExecutionId and owns attempt identity.
+message SubmitTaskRequest {
+  TenantId tenant_id = 1;
+  AgentId agent_id = 2;
+  string name = 3;
+  string entrypoint = 4;
+  ResourceSet resources = 5;
+  bytes payload = 6;
+  string payload_media_type = 7;
+}
+message SubmitTaskResponse {
+  Status status = 1;
+  TaskId task_id = 2;
+  ExecutionId execution_id = 3;
+}
+
+message CancelTaskRequest { TaskId task_id = 1; }
+message CancelTaskResponse { Status status = 1; }
+
+message GetTaskRequest { TaskId task_id = 1; }
+message GetTaskResponse {
+  Status status = 1;
+  TaskInfo task = 2;
+}
+
+message GetResultRequest {
+  TaskId task_id = 1;
+  google.protobuf.Duration timeout = 2;
+}
+message GetResultResponse {
+  Status status = 1;
+  TaskState terminal_state = 2;
+  bytes result = 3;
+  string result_media_type = 4;
+}
+
+message ReportTaskResultRequest {
+  TaskId task_id = 1;
+  ExecutionId execution_id = 2;
+  TaskState terminal_state = 3;
+  Status status = 4;
+  bytes result = 5;
+  string result_media_type = 6;
+}
+message ReportTaskResultResponse { Status status = 1; }

@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package dar.proto.v1;
+
+import "common.proto";
+
+// Phase Three reserves the object wire vocabulary only. No distributed object
+// store, ownership protocol, reference counting, or location service is built here.
+message ObjectRef {
+  ObjectId object_id = 1;
+}

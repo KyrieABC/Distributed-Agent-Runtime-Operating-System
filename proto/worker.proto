@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package dar.proto.v1;
+
+import "common.proto";
+import "task.proto";
+
+// 3 names for RPC methods (gRPC client can call on the WorkerService)
+/***
+Main client: ControlPlane, NodeManager
+Main server: Worker node
+
+Control Plane -> RpcClient --(gRPC-LaunchTask(...)) -> Worker Node B -> gRPC Server -> Phase 1 runtime -> Local Schedule/ WOrkerPool / Worker
+*/
+// These rpc are used from (client)Control Plane / NodeManager -> (server)Worker Node
+service WorkerService {
+  // only the contract, no actual network behavior has been implemented yet
+  // WorkerService will expose an RPC named LaunchTask
+  rpc LaunchTask(LaunchTaskRequest) returns (LaunchTaskResponse);
+  rpc CancelTask(CancelWorkerTaskRequest) returns (CancelWorkerTaskResponse);
+  rpc GetWorkerInfo(GetWorkerInfoRequest) returns (GetWorkerInfoResponse);
+}
+
+message LaunchTaskRequest {
+  TaskDescriptor task = 1;
+}
+
+message LaunchTaskResponse {
+  Status status = 1;
+}
+
+message CancelWorkerTaskRequest {
+  TaskId task_id = 1;
+  ExecutionId execution_id = 2;
+}
+
+message CancelWorkerTaskResponse {
+  Status status = 1;
+}
+
+message GetWorkerInfoRequest {}
+
+message GetWorkerInfoResponse {
+  Status status = 1;
+  NodeId node_id = 2;
+  uint64 incarnation = 3;
+  ResourceSet total_resources = 4;
+  ResourceSet available_resources = 5;
+  uint32 running_tasks = 6;
+}

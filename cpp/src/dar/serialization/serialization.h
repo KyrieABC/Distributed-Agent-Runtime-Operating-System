@@ -1,5 +1,6 @@
 #pragma once
 
+// Data serialization means: converting data structures to a format that can be stored or transmitted and reconstructed later. This file contains functions for serializing and deserializing common DAR types to and from protocol buffer messages.
 #include "dar/common/id.h"
 #include "dar/common/status.h"
 #include "dar/core/resource.h"

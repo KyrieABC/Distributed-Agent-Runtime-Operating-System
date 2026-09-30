@@ -42,8 +42,12 @@ private:
 
     mutable std::mutex mu_;
 
+    // grpc::Service: base class for all generated server-side service implementation in gRPC C++.
+    // -> Act as routing and registration contract between the gRPC server runtime
+    // -> When an incoming network request arrives at the gRPC server, the server uses the registered grpc::Service
     std::vector<grpc::Service*> services_;
 
+    // core server-side object, represent a running server instance that listens for incoming network connections, manager worker threads, dispatches incoming RPC requests to their corresponding grpc::Service handlers, and manages the server's lifecycle
     std::unique_ptr<grpc::Server> server_;
 
     bool started_{false};

@@ -21,6 +21,7 @@ public:
 
     // grpc::Channel is a thread-safe object that represents a connection to a gRPC server.
     // Serve as the primary network abstraction over which client applications communicate with servers, acting as the underlying transport layer for generated client stub
+    // shared_ptr were used for grpc::Channel because grpc::Channel is long-lived and reused across many different requests, safely accessed by multiple threads simultaneously (need shared_ptr)
     [[nodiscard]]
     std::shared_ptr<grpc::Channel> GetChannel(
         const std::string& endpoint

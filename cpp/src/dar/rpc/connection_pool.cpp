@@ -21,6 +21,7 @@ ConnectionPool::GetChannel(const std::string& endpoint)
 
     auto channel = grpc::CreateChannel(
         endpoint,
+        // Create gRPC channel without any encryption or authentication
         grpc::InsecureChannelCredentials()
     );
 

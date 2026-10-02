@@ -23,6 +23,7 @@ Status HandlerRegistry::Register(
 
     std::lock_guard<std::mutex> lock(mu_);
 
+    // constructs an element directly in-place inside map (avoid unnecessary copies)
     const auto [it, inserted] = handlers_.emplace(
         std::move(entrypoint),
         std::move(handler));
@@ -36,6 +37,7 @@ Status HandlerRegistry::Register(
     return Status::OK();
 }
 
+// Perform lookup from a distributed function name to actual local C++ executable code
 Status HandlerRegistry::Resolve(
     const std::string& entrypoint,
     RegisteredHandler* out) const

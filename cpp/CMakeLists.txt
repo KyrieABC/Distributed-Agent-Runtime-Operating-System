@@ -138,6 +138,62 @@ set_target_properties(
         POSITION_INDEPENDENT_CODE ON
 )
 
+# Phase 3 Worker Service
+# Network WorkerService -> HandlerRegistry -> Phase-1 Runtime
+#[[
+Dependency graph:
+dar_phase3_proto
+       ▲
+       │
+dar_phase3_transport
+       ▲
+       │
+dar_phase3_worker
+       │
+       ├── HandlerRegistry
+       ├── BuiltinHandlers
+       └── WorkerServiceImpl
+                │
+                ▼
+               dar
+          Phase-1 Runtime
+]]
+add_library(
+    dar_phase3_worker
+    STATIC 
+
+    src/dar/worker/handler_registry.cpp 
+    src/dar/worker/builtin_handlers.cpp 
+    src/dar/worker/worker_service.cpp 
+
+)
+
+target_include_directories(
+    dar_phase3_worker 
+    PUBLIC 
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_compile_features(
+    dar_phase3_worker 
+    PUBLIC 
+        cxx_std_17
+)
+
+target_link_libraries(
+    dar_phase3_worker 
+    PUBLIC 
+        dar 
+        dar_phase3_transport 
+        dar_phase3_proto
+)
+
+set_target_properties(
+    dar_phase3_worker 
+    PROPERTIES 
+        POSITION_INDEPENDENT_CODE ON
+)
+
 # Python extensions
 # when python packaging occurs, pyproject.toml overrides it to ON
 if(DAR_BUILD_PYTHON)
@@ -258,6 +314,7 @@ if(DAR_BUILD_TESTS)
 
             test/phase3/serialization_test.cpp
             test/phase3/transport_test.cpp
+            test/phase3/worker_service_test.cpp
         )
 
         # gives dar_tests two dependencies:
@@ -269,6 +326,7 @@ if(DAR_BUILD_TESTS)
             PRIVATE 
                 dar 
                 dar_phase3_transport
+                dar_phase3_worker
                 GTest::gtest_main
         )
 

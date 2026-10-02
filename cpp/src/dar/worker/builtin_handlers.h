@@ -6,8 +6,7 @@
 namespace dar
 {
 
-// Register the minimal built-in handlers used to prove the
-// Phase-3 distributed execution boundary.
+// Register the minimal built-in handlers used to prove the Phase-3 distributed execution boundary.
 Status RegisterBuiltinHandlers(HandlerRegistry& registry);
 
 }  // namespace dar

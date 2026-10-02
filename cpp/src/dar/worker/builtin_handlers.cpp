@@ -45,6 +45,8 @@ Status BuiltinSquare(
         const std::string input(payload);
 
         std::size_t consumed = 0;
+        // stoll: string to long long
+        // 2nd parameter: a pointer to size_t where function can store the index of the first unconverted character
         const long long value = std::stoll(input, &consumed);
 
         if(consumed != input.size())
@@ -70,6 +72,9 @@ Status BuiltinSquare(
 
 Status RegisterBuiltinHandlers(HandlerRegistry& registry)
 {
+    // Initialization hook
+    // BuiltinSquare has exact same return type and parameter list as the std::function RegisteredHandler
+    // registry wraps BuiltinSquare into the std::function (RegisteredHandler)
     return registry.Register(
         "builtin.square",
         BuiltinSquare);

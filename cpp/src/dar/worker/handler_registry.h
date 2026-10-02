@@ -13,10 +13,10 @@
 namespace dar
 {
 
-// Executable code that can be addressed by a distributed entrypoint.
-//
-// Unlike Phase-1 TaskHandler, this boundary receives the serialized
-// task payload that arrived over the network.
+// Executable code that can be addressed by a distributed entrypoint (defines the exact shape that any pluggable task handler or command must follow so the system can invoke them dynamically)
+// Unlike Phase-1 TaskHandler, this boundary receives the serialized task payload that arrived over the network.
+// type alias for a callback function signature using std::function
+// Strict function signature contract for any handler that wants to plug into the system
 using RegisteredHandler = std::function<Status(
     const TaskSpec&,
     RuntimeContext&,
@@ -43,7 +43,10 @@ public:
     [[nodiscard]] bool Contains(const std::string& entrypoint) const;
 
 private:
+    // mutable: allows const member methods to lock the mutex
+    // Ensure multiple threads can safely read from or write to the handlers_ map concurrently without data races
     mutable std::mutex mu_;
+    // Maps the string identifier to its corresponding RegisterHandler callback function
     std::unordered_map<std::string, RegisteredHandler> handlers_;
 };
 

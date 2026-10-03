@@ -10,7 +10,7 @@
 namespace dar
 {
 // in worker.proto: `service WorkerService{rpc...}`
-// worker.grpc.pb.h(declaration of the generated WorkerService::service class)
+// worker.grpc.pb.h(declaration of the generated WorkerService::Service class)
 // worker.grpc.pb.cpp(generated implementation/support code)
 /**
  * Inherit from Service:
@@ -18,7 +18,7 @@ namespace dar
  *  -> gRPC knows someone called RPC /dar.proto.v1.WorkerService/LaunchTask but does NOT know what DAR should actually do
  * (the generated class establishes `virtual grpc::Status LaunchTask(...))
  * (then provide actual behavior):
- * namespace dar::proto::v1 {
+namespace dar::proto::v1 {
 class WorkerService {
 public:
     // Client side

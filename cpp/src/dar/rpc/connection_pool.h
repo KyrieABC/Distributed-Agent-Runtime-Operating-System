@@ -37,7 +37,7 @@ private:
      * A map of endpoints to gRPC channels.
 
     * grpc::Channel is thread-safe, wrapping it in std::shared_ptr allows multiple threads to safely hold and use a reference to the same active network connection simultaneously without worrying about manual lifetime management or race conditions during destruction
-    * When caller requests a channel via GetChannel(endpoint), the pool and return a shraed ownership handle to the eixsting cached channel. Callers can you the channel as long as they need ot complete their RPCs, and the channel remains alive in the pool's cache even if individual request handlers finish and release their local copies
+    * When caller requests a channel via GetChannel(endpoint), the pool and return a shared ownership handle to the existing cached channel. Callers can use the channel as long as they need to complete their RPCs, and the channel remains alive in the pool's cache even if individual request handlers finish and release their local copies
      */
     std::unordered_map<
         std::string,

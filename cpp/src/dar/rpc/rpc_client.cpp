@@ -13,6 +13,11 @@ RpcClient::RpcClient(ConnectionPool& connections)
 std::shared_ptr<grpc::Channel>
 RpcClient::Channel(const std::string& endpoint)
 {
+    // GetChannel(endpoint):
+    /**
+     * If found a shared_pointer with the given name(string), return the pointer
+     * if not found, create a new channel, add it to the channels_ unordered_map and then return it
+     */
     return connections_.GetChannel(endpoint);
 }
 
@@ -32,12 +37,14 @@ RpcClient::CreateContext(
     // A single ClientContext is tied to only 1 specific RPC call. Two different threads or two different requests cannot share the same ClientContext - as single owner, unique_ptr is a good choice
     // -> when function executing the RPC finishes, the unique_ptr automatically cleans up the context without manual memory management
     /**
-    grpc::Channel: represents the long0lived physical network connection shared acorss many requests
+    grpc::Channel: represents the long-lived physical network connection shared acorss many requests
     grpc::ClientContext: created fresh for every single RPC call and destroyed immediately afterward. NOT thread-safe, must only be used by 1 thread/RPC at a time
     */
     auto context =
         std::make_unique<grpc::ClientContext>();
 
+    // Put a maximum time limit on that specific RPC call
+    // "RPC must finish before now + timeout", if it hasn't, return a deadline error
     context->set_deadline(
         std::chrono::system_clock::now() + timeout
     );

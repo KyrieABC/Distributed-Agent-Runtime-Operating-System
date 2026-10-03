@@ -194,6 +194,92 @@ set_target_properties(
         POSITION_INDEPENDENT_CODE ON
 )
 
+#[[
+Cluster-level scheduling layer:
+
+ControlPlane
+    │
+    ▼
+NodeRegistry
+    │
+    ├── cluster node metadata
+    ├── reported_available
+    └── schedulable_available
+
+ControlPlane
+    │
+    ▼
+NodeManager
+    │
+    ▼
+RpcClient
+    │
+    ▼
+WorkerService::Stub
+    │
+    ▼
+remote WorkerServiceImpl
+    │
+    ▼
+Phase-1 Runtime
+
+(WorkerServiceImp is the server side implementation, client reaches it through a gRPC RPC call usign WorkerService::Stub)
+This layer chooses NodeID.
+The existing Phase-1 scheduler still chooses WorkerID.
+]]
+
+add_library(
+    dar_phase3_cluster 
+    STATIC 
+
+    src/dar/node/node_registry.cpp 
+    src/dar/node/node_manager.cpp 
+
+    src/dar/control/control_plane.cpp 
+)
+
+target_include_directories(
+    dar_phase3_cluster 
+    PUBLIC 
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_compile_features(
+    dar_phase3_cluster 
+    PUBLIC 
+        cxx_std_17
+)
+
+#[[
+dar
+ ▲
+ │
+dar_phase3_proto
+ ▲
+ │
+dar_phase3_transport
+ ▲
+ │
+dar_phase3_worker
+ ▲
+ │
+dar_phase3_cluster
+]]
+target_link_libraries(
+    dar_phase3_cluster 
+    PUBLIC 
+        dar 
+        dar_phase3_transport 
+        dar_phase3_worker
+        dar_phase3_proto
+)
+
+set_target_properties(
+    dar_phase3_cluster 
+    PROPERTIES 
+        POSITION_INDEPENDENT_CODE ON
+)
+
 # Python extensions
 # when python packaging occurs, pyproject.toml overrides it to ON
 if(DAR_BUILD_PYTHON)
@@ -315,6 +401,8 @@ if(DAR_BUILD_TESTS)
             test/phase3/serialization_test.cpp
             test/phase3/transport_test.cpp
             test/phase3/worker_service_test.cpp
+
+            test/phase3/cluster_scheduler_test.cpp 
         )
 
         # gives dar_tests two dependencies:
@@ -327,6 +415,7 @@ if(DAR_BUILD_TESTS)
                 dar 
                 dar_phase3_transport
                 dar_phase3_worker
+                dar_phase3_cluster
                 GTest::gtest_main
         )
 

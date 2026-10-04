@@ -22,7 +22,7 @@ namespace
 
 TEST(
     Phase3WorkerServiceTest,
-    LaunchTaskCrossesNetworkIntoPhase1Runtime)
+    DuplicateExecutionIDIsSubmittedOnlyOnce)
 {
     // --------------------------------------------------------
     // Phase-1 runtime
@@ -41,19 +41,35 @@ TEST(
     ASSERT_TRUE(runtime.Start().ok());
 
     // --------------------------------------------------------
-    // Worker-side code registry
+    // Handler whose execution count is observable
     // --------------------------------------------------------
 
     HandlerRegistry registry;
 
-    ASSERT_TRUE(
-        RegisterBuiltinHandlers(registry).ok());
+    std::atomic<int> execution_count{0};
 
     ASSERT_TRUE(
-        registry.Contains("builtin.square"));
+        registry.Register(
+            "test.count_once",
+            [&execution_count](
+                const TaskSpec&,
+                RuntimeContext&,
+                std::string_view,
+                std::string_view,
+                std::string* result) -> Status
+            {
+                ++execution_count;
+
+                if(result != nullptr)
+                {
+                    *result = "executed";
+                }
+
+                return Status::OK();
+            }).ok());
 
     // --------------------------------------------------------
-    // Production WorkerService
+    // WorkerService
     // --------------------------------------------------------
 
     WorkerServiceImpl worker_service(
@@ -63,7 +79,8 @@ TEST(
     RpcServer server("127.0.0.1:0");
 
     ASSERT_TRUE(
-        server.RegisterService(&worker_service).ok());
+        server.RegisterService(
+            &worker_service).ok());
 
     ASSERT_TRUE(server.Start().ok());
 
@@ -71,10 +88,11 @@ TEST(
 
     const std::string endpoint =
         "127.0.0.1:" +
-        std::to_string(server.SelectedPort());
+        std::to_string(
+            server.SelectedPort());
 
     // --------------------------------------------------------
-    // Remote client
+    // Client
     // --------------------------------------------------------
 
     ConnectionPool connection_pool;
@@ -84,21 +102,29 @@ TEST(
         rpc_client.Channel(endpoint);
 
     auto stub =
-        proto::v1::WorkerService::NewStub(channel);
+        proto::v1::WorkerService::NewStub(
+            channel);
 
     // --------------------------------------------------------
-    // Construct distributed TaskDescriptor
+    // Construct one distributed execution: T1 / E1
     // --------------------------------------------------------
 
-    const TenantID tenant_id = TenantID::Random();
-    const AgentID agent_id = AgentID::Random();
-    const TaskID task_id = TaskID::Random();
+    const TenantID tenant_id =
+        TenantID::Random();
+
+    const AgentID agent_id =
+        AgentID::Random();
+
+    const TaskID task_id =
+        TaskID::Random();
+
     const ExecutionID execution_id =
         ExecutionID::Random();
 
     proto::v1::LaunchTaskRequest request;
 
-    auto* task = request.mutable_task();
+    auto* task =
+        request.mutable_task();
 
     serialization::ToProto(
         tenant_id,
@@ -118,12 +144,13 @@ TEST(
 
     task->set_attempt(1);
 
-    task->set_name("square-12");
+    task->set_name(
+        "duplicate-execution-test");
 
     task->set_entrypoint(
-        "builtin.square");
+        "test.count_once");
 
-    task->set_payload("12");
+    task->set_payload("");
 
     task->set_payload_media_type(
         "text/plain");
@@ -132,34 +159,36 @@ TEST(
           ->mutable_quantities())["CPU"] = 1.0;
 
     // --------------------------------------------------------
-    // CROSS THE REAL gRPC BOUNDARY
+    // First delivery of E1
     // --------------------------------------------------------
 
-    proto::v1::LaunchTaskResponse response;
+    proto::v1::LaunchTaskResponse first_response;
 
-    auto context =
+    auto first_context =
         rpc_client.CreateContext(
             std::chrono::seconds(2));
 
-    const grpc::Status transport_status =
+    const grpc::Status first_transport =
         stub->LaunchTask(
-            context.get(),
+            first_context.get(),
             request,
-            &response);
+            &first_response);
 
-    // Transport succeeded.
-    ASSERT_TRUE(transport_status.ok())
-        << transport_status.error_message();
+    ASSERT_TRUE(first_transport.ok())
+        << first_transport.error_message();
 
-    // Runtime admission succeeded.
-    const Status launch_status =
-        serialization::FromProtoStatus(response.status());
+    const Status first_status =
+        serialization::FromProtoStatus(
+            first_response.status());
 
-    ASSERT_TRUE(launch_status.ok())
-        << launch_status.ToString();
+    ASSERT_TRUE(first_status.ok())
+        << first_status.ToString();
 
     // --------------------------------------------------------
-    // Prove execution actually went through Phase 1
+    // Wait for the original execution to finish.
+    //
+    // This is intentional:
+    // we want to prove E1 is remembered even AFTER completion.
     // --------------------------------------------------------
 
     std::string result;
@@ -173,7 +202,50 @@ TEST(
     ASSERT_TRUE(result_status.ok())
         << result_status.ToString();
 
-    EXPECT_EQ(result, "144");
+    EXPECT_EQ(result, "executed");
+
+    EXPECT_EQ(
+        execution_count.load(),
+        1);
+
+    // --------------------------------------------------------
+    // Deliver EXACTLY the same distributed execution again.
+    //
+    // Same TaskID.
+    // Same ExecutionID.
+    // Same attempt.
+    // --------------------------------------------------------
+
+    proto::v1::LaunchTaskResponse duplicate_response;
+
+    auto duplicate_context =
+        rpc_client.CreateContext(
+            std::chrono::seconds(2));
+
+    const grpc::Status duplicate_transport =
+        stub->LaunchTask(
+            duplicate_context.get(),
+            request,
+            &duplicate_response);
+
+    ASSERT_TRUE(duplicate_transport.ok())
+        << duplicate_transport.error_message();
+
+    const Status duplicate_status =
+        serialization::FromProtoStatus(
+            duplicate_response.status());
+
+    // Duplicate delivery is idempotent, not an application error.
+    EXPECT_TRUE(duplicate_status.ok())
+        << duplicate_status.ToString();
+
+    // --------------------------------------------------------
+    // Critical Stage-5B invariant
+    // --------------------------------------------------------
+
+    EXPECT_EQ(
+        execution_count.load(),
+        1);
 
     ASSERT_TRUE(server.Shutdown().ok());
     ASSERT_TRUE(runtime.Shutdown().ok());

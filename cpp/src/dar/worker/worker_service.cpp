@@ -84,36 +84,40 @@ WorkerServiceImpl::WorkerServiceImpl(
     registry_(registry), 
     result_reporter_(result_reporter)
     {
-        runtime_.SetCompletionCallback(
-            [this](const TaskCompletion& completion)
-            {
-                ExecutionID remote_execution_id;
-
+        if(result_reporter_!=nullptr)
+        {
+            runtime_.SetCompletionCallback(
+                [this](const TaskCompletion& completion)
                 {
-                    std::lock_guard<std::mutex> lock(executions_mu_);
+                    ExecutionID remote_execution_id;
 
-                    const auto it = remote_executions_.find(completion.task_id);
-
-                    if(it == remote_executions_.end())
                     {
-                        return;
+                        std::lock_guard<std::mutex> lock(executions_mu_);
+
+                        const auto it = task_executions_.find(completion.task_id);
+
+                        if(it == task_executions_.end())
+                        {
+                            return;
+                        }
+
+                        remote_execution_id = it->second;
+
+                        // DO NOT erase execution here
+                        // A duplicate LaunchTask(E1) may arrive after E1 has already been completed
+                        // E1 must remain known so it cannot cross Runtime::Submit() again
+                        (void)result_reporter_->Report(
+                            completion.task_id,
+                            remote_execution_id,
+                            completion.state,
+                            completion.status,
+                            completion.result,
+                            std::chrono::seconds(2)
+                        );
                     }
-
-                    remote_execution_id = it->second;
-
-                    remote_executions_.erase(it);
                 }
-
-                (void)result_reporter_->Report(
-                    completion.task_id,
-                    remote_execution_id,
-                    completion.state,
-                    completion.status,
-                    completion.result,
-                    std::chrono::seconds(2)
-                );
-            }
-        );
+            );
+        }
     }
 
 grpc::Status WorkerServiceImpl::LaunchTask(
@@ -282,33 +286,65 @@ public:
                 result);
         };
 
-    if(result_reporter_!=nullptr)
+    // 6. Distributed Execution idempotency
+    // ExecutionID is the identity of 1 distributed execution attempt
+    // The same ExecutionID may arrive more than once because sender may not know whether a previous RPC was processed
+    // Invariant:   1 ExecutionID -> at most 1 Runtime::Submit(...)
+    // -> This check and insertion occur under the same mutex so two concurrent LaunchTask(E1) RPCs cannot both pass admission
     {
         std::lock_guard<std::mutex> lock(executions_mu_);
 
-        remote_executions_[task_id] = remote_execution_id;
-    }
-    // --------------------------------------------------------
-    // 6. CROSS THE ARCHITECTURAL BOUNDARY
-    // --------------------------------------------------------
+        const auto existing = executions_.find(remote_execution_id);
 
+        if(existing != executions_.end())
+        {
+            // The same ExecutionID must continue to refer to the same TaskID
+            if(existing->second.task_id != task_id)
+            {
+                return ApplicationFailure(Status::FailedPrecondition("Execution is already associated with a different task"), response);
+            }
+
+            // Idempotent replay
+            // DO NOT call Runtime::Submit() again
+            serialization::ToProto(existing->second.admission_status, response->mutable_status());
+
+            return grpc::Status::OK;
+        }
+
+        // Cliam E1 before crossing Runtime::Submit()
+        // This prevents another concurrent LaunchTask(E1) from also reaching Runtime::Submit()
+        executions_.emplace(
+            remote_execution_id,
+            ExecutionAdmission{
+                task_id,
+                Status::OK()
+            }
+        );
+
+        task_executions_[task_id] = remote_execution_id;
+    }    
+
+    // 7. Cross the Architectural Boundary
     status = runtime_.Submit(
         std::move(spec),
-        std::move(local_handler));
+        std::move(local_handler)
+    );
 
-    if(!status.ok() && result_reporter_ != nullptr)
+    // 8. Store original admission result
     {
         std::lock_guard<std::mutex> lock(executions_mu_);
 
-        remote_executions_.erase(task_id);
+        auto it = executions_.find(remote_execution_id);
+
+        if(it != executions_.end())
+        {
+            it->second.admission_status = status;
+        }
     }
 
     serialization::ToProto(status, response->mutable_status());
 
-    // LaunchTask is admission, not task completion.
-    //
-    // If Runtime::Submit() returned OK, the Phase-1 runtime now owns
-    // the task and its scheduler/worker machinery proceeds normally.
+    // Launchtask reports admission, not completion
     return grpc::Status::OK;
 }
 

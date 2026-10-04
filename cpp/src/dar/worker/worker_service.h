@@ -2,6 +2,7 @@
 
 #include <mutex>
 #include <unordered_map>
+
 #include <grpcpp/grpcpp.h>
 
 #include "dar/runtime/runtime.h"
@@ -75,6 +76,17 @@ public:
         const proto::v1::LaunchTaskRequest* request,
         proto::v1::LaunchTaskResponse* response) override;
 private:
+    // For Phase 3 stage 5B, replace remote_executions_ with an ExecutionIDkkeyed admission ledge
+    struct ExecutionAdmission
+    {
+        TaskID task_id;
+
+        // Result of the original Runtime::Submit admission
+
+        // A duplicate LaunchTask carrying the same ExecutionID returns this result instead of submitting again
+        Status admission_status;
+    };
+    
     Runtime& runtime_;
     HandlerRegistry& registry_;
 
@@ -82,7 +94,12 @@ private:
 
     std::mutex executions_mu_;
 
-    std::unordered_map<TaskID, ExecutionID, StrongIDHash<TaskID>> remote_executions_;
+    // E1 (execution ID) may arrive multiple times because of transport redelivery, but it may cross Runtime::Submit() at most once
+    std::unordered_map<ExecutionID, ExecutionAdmission, StrongIDHash<ExecutionID>> executions_;
+
+    // Phase 1 completes task by TaskID while the ControlPlane expects its distributed ExecutionID back
+    // This mapping is retained for the lifetime of the worker in Phase 3 so that completed executions remain unknown
+    std::unordered_map<TaskID, ExecutionID, StrongIDHash<TaskID>> task_executions_;
 };
 
 }  // namespace dar

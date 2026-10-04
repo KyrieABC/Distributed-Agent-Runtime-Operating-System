@@ -588,5 +588,367 @@ TEST(
         control_server.Shutdown().ok());
 }
 
+TEST(
+    Phase3ClusterSchedulerTest,
+    DuplicateReportTaskResultIsIdempotent)
+{
+    // --------------------------------------------------------
+    // Control-plane infrastructure
+    // --------------------------------------------------------
+
+    ConnectionPool connections;
+    RpcClient rpc_client(connections);
+
+    NodeRegistry node_registry;
+
+    NodeManager node_manager(
+        node_registry,
+        rpc_client);
+
+    ControlPlane control_plane(
+        node_registry,
+        node_manager);
+
+    // --------------------------------------------------------
+    // Worker
+    // --------------------------------------------------------
+
+    RuntimeOptions options;
+    options.worker_count = 1;
+
+    ASSERT_TRUE(
+        options.resources_per_worker.Set(
+            "CPU",
+            1.0).ok());
+
+    Runtime runtime(std::move(options));
+
+    ASSERT_TRUE(
+        runtime.Start().ok());
+
+    HandlerRegistry registry;
+
+    ASSERT_TRUE(
+        RegisterBuiltinHandlers(
+            registry).ok());
+
+    WorkerServiceImpl worker_service(
+        runtime,
+        registry);
+
+    RpcServer worker_server(
+        "127.0.0.1:0");
+
+    ASSERT_TRUE(
+        worker_server.RegisterService(
+            &worker_service).ok());
+
+    ASSERT_TRUE(
+        worker_server.Start().ok());
+
+    const std::string worker_endpoint =
+        "127.0.0.1:" +
+        std::to_string(
+            worker_server.SelectedPort());
+
+    // --------------------------------------------------------
+    // Register one worker node
+    // --------------------------------------------------------
+
+    ResourceSet capacity;
+
+    ASSERT_TRUE(
+        capacity.Set(
+            "CPU",
+            1.0).ok());
+
+    NodeRecord node;
+
+    node.node_id =
+        NodeID::Random();
+
+    node.worker_endpoint =
+        worker_endpoint;
+
+    node.total_resources =
+        capacity;
+
+    node.reported_available =
+        capacity;
+
+    node.incarnation = 1;
+
+    node.state =
+        NodeState::kAlive;
+
+    const NodeID node_id =
+        node.node_id;
+
+    ASSERT_TRUE(
+        node_manager.RegisterNode(
+            std::move(node)).ok());
+
+    // --------------------------------------------------------
+    // Submit T1 / E1
+    // --------------------------------------------------------
+
+    ResourceSet task_resources;
+
+    ASSERT_TRUE(
+        task_resources.Set(
+            "CPU",
+            1.0).ok());
+
+    SubmitTaskSpec submission;
+
+    submission.tenant_id =
+        TenantID::Random();
+
+    submission.agent_id =
+        AgentID::Random();
+
+    submission.name =
+        "square-12";
+
+    submission.entrypoint =
+        "builtin.square";
+
+    submission.resources =
+        ResourceRequest(
+            std::move(task_resources));
+
+    submission.payload =
+        "12";
+
+    submission.payload_media_type =
+        "text/plain";
+
+    SubmitTaskResult submitted;
+
+    ASSERT_TRUE(
+        control_plane.SubmitTask(
+            submission,
+            &submitted).ok());
+
+    EXPECT_EQ(
+        submitted.node_id,
+        node_id);
+    
+    // Verify the node returned by SubmitTask is still registered.
+NodeRecord registered_after_submit;
+
+ASSERT_TRUE(
+    node_registry.GetNode(
+        submitted.node_id,
+        &registered_after_submit).ok());
+
+EXPECT_EQ(
+    registered_after_submit.node_id,
+    submitted.node_id);
+
+// Verify the ControlPlane stored the same NodeID.
+DistributedTaskRecord record_after_submit;
+
+ASSERT_TRUE(
+    control_plane.GetTaskRecord(
+        submitted.task_id,
+        &record_after_submit).ok());
+
+EXPECT_EQ(
+    record_after_submit.node_id,
+    submitted.node_id);
+
+EXPECT_EQ(
+    record_after_submit.node_id,
+    node_id);  
+
+    // --------------------------------------------------------
+    // Wait for local execution.
+    //
+    // This worker intentionally has NO ResultReporter.
+    // We will simulate ReportTaskResult manually so we can
+    // deliver exactly the same completion twice.
+    // --------------------------------------------------------
+
+    std::string local_result;
+
+    ASSERT_TRUE(
+        runtime.GetResult(
+            submitted.task_id,
+            &local_result,
+            std::chrono::seconds(2)).ok());
+
+    ASSERT_EQ(
+        local_result,
+        "144");
+
+    // Reservation should still be held because nothing has
+    // reported terminal completion to the ControlPlane yet.
+
+    NodeRecord before_report;
+
+    ASSERT_TRUE(
+        node_registry.GetNode(
+            node_id,
+            &before_report).ok());
+
+    EXPECT_DOUBLE_EQ(
+        before_report.schedulable_available
+            .Get("CPU")
+            .ToDouble(),
+        0.0);
+
+    // --------------------------------------------------------
+    // FIRST ReportTaskResult(E1)
+    // --------------------------------------------------------
+
+    const Status first_report =
+        control_plane.ReportTaskResult(
+            submitted.task_id,
+            submitted.execution_id,
+            DistributedTaskState::KSucceeded,
+            Status::OK(),
+            "144",
+            "text/plain");
+
+    ASSERT_TRUE(
+        first_report.ok())
+        << first_report.ToString();
+
+    NodeRecord after_first_report;
+
+    ASSERT_TRUE(
+        node_registry.GetNode(
+            node_id,
+            &after_first_report).ok());
+
+    // Reservation released exactly once.
+    EXPECT_DOUBLE_EQ(
+        after_first_report.schedulable_available
+            .Get("CPU")
+            .ToDouble(),
+        1.0);
+
+    
+    
+    // --------------------------------------------------------
+    // DUPLICATE ReportTaskResult(E1)
+    // --------------------------------------------------------
+
+    const Status duplicate_report =
+        control_plane.ReportTaskResult(
+            submitted.task_id,
+            submitted.execution_id,
+            DistributedTaskState::KSucceeded,
+            Status::OK(),
+            "144",
+            "text/plain");
+
+    
+    // Identical duplicate is an idempotent success.
+    ASSERT_TRUE(
+        duplicate_report.ok())
+        << duplicate_report.ToString();
+
+    NodeRecord after_duplicate_report;
+
+    ASSERT_TRUE(
+        node_registry.GetNode(
+            node_id,
+            &after_duplicate_report).ok());
+
+    // CRITICAL 5C INVARIANT:
+    //
+    // The duplicate did NOT release CPU again.
+    EXPECT_DOUBLE_EQ(
+        after_duplicate_report.schedulable_available
+            .Get("CPU")
+            .ToDouble(),
+        1.0);
+
+    // After the successful first report:
+
+/**
+ *                     ReportTaskResult
+
+First E1 completion
+       │
+       └── commit + Release                    ✓
+
+Same E1 + same completion
+       │
+       └── return OK, no Release               ✓
+
+Same E1 + conflicting completion
+       │
+       └── FailedPrecondition, no Release      ✓
+ */
+const Status conflicting_report =
+    control_plane.ReportTaskResult(
+        submitted.task_id,
+        submitted.execution_id,
+        DistributedTaskState::KFailed,
+        Status::Internal(
+            "conflicting failure"),
+        "",
+        "text/plain");
+
+EXPECT_FALSE(
+    conflicting_report.ok());
+
+NodeRecord after_conflict;
+
+ASSERT_TRUE(
+    node_registry.GetNode(
+        node_id,
+        &after_conflict).ok());
+
+EXPECT_DOUBLE_EQ(
+    after_conflict.schedulable_available
+        .Get("CPU")
+        .ToDouble(),
+    1.0);
+
+
+    // --------------------------------------------------------
+    // Stored terminal result remains unchanged
+    // --------------------------------------------------------
+
+    DistributedTaskRecord record;
+
+    ASSERT_TRUE(
+        control_plane.GetTaskRecord(
+            submitted.task_id,
+            &record).ok());
+
+    EXPECT_EQ(
+        record.execution_id,
+        submitted.execution_id);
+
+    EXPECT_EQ(
+        record.state,
+        DistributedTaskState::KSucceeded);
+
+    EXPECT_TRUE(
+        record.terminal_status.ok());
+
+    EXPECT_EQ(
+        record.result,
+        "144");
+
+    EXPECT_EQ(
+        record.result_media_type,
+        "text/plain");
+
+    ASSERT_TRUE(
+        worker_server.Shutdown().ok());
+
+    ASSERT_TRUE(
+        runtime.Shutdown().ok());
+}
+
+// Idempotency doesn't mean accept anything after completion
+
+
 }  // namespace
 }  // namespace dar

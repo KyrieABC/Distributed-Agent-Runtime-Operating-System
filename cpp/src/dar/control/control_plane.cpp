@@ -15,7 +15,41 @@ namespace
 constexpr auto kLaunchRpcTimeout =
     std::chrono::seconds(2);
 
+/**
+For Phase 3 Stage 5C: 
+First ReportTaskResult(T1, E1)
+        │
+        ├── record is RUNNING
+        ├── commit terminal result
+        └── Release(Node B, CPU=1)
+                    ↓
+             schedulable = 1
+
+
+Duplicate ReportTaskResult(T1, E1)
+        │
+        ├── record already terminal
+        ├── same E1
+        ├── same terminal outcome
+        └── return OK
+                    X
+               NO Release()
+
+
+schedulable remains 1
+ */
+bool IsTerminal(DistributedTaskState state)
+{
+    return state == DistributedTaskState::KSucceeded || state == DistributedTaskState::KFailed || state == DistributedTaskState::KCanceled;
 }
+
+bool SameStatus(
+    const Status& lhs, const Status& rhs
+)
+{
+    return lhs.code() == rhs.code() && lhs.message() == rhs.message();
+}
+} // namespace
 
 
 ControlPlane::ControlPlane(
@@ -218,54 +252,119 @@ Release
   ↓
 schedulable = 1
  */
+// Changed for Phase 3 Stage 5C
+/**
+First report
+    │
+    ├── find T1
+    ├── verify E1
+    ├── verify terminal state
+    │
+    ├── record already terminal?
+    │       │
+    │       ├── identical → OK, STOP
+    │       └── conflicting → FailedPrecondition, STOP
+    │
+    ├── Release(record.node_id, record.resources)
+    │       │
+    │       └── failure → return failure, DON'T terminalize
+    │
+    ├── commit terminal result
+    └── OK
+ */
 Status ControlPlane::ReportTaskResult(
     TaskID task_id,
     ExecutionID execution_id,
     DistributedTaskState state,
     Status terminal_status,
-    std::string result, 
-    std::string result_media_type
-)
+    std::string result,
+    std::string result_media_type)
 {
-    NodeID node_id;
-    ResourceRequest resources;
-
+    if(!IsTerminal(state))
     {
-        std::lock_guard<std::mutex> lock(tasks_mu_);
-
-        const auto it = tasks_.find(task_id);
-
-        if(it == tasks_.end())
-        {
-            return Status::NotFound("distributed task is not registered");
-        }
-
-        DistributedTaskRecord& record = it->second;
-
-        if(record.execution_id!=execution_id)
-        {
-            return Status::FailedPrecondition("execution does not match current task execution");
-        }
-
-        if(state!=DistributedTaskState::KSucceeded && state!=DistributedTaskState::KFailed && state!=DistributedTaskState::KCanceled)
-        {
-            return Status::InvalidArgument("reported task result must be terminal");
-        }
-
-        node_id = record.node_id;
-        resources = record.resources;
-
-        record.state = state;
-        record.terminal_status = std::move(terminal_status);
-        record.result = std::move(result);
-        record.result_media_type = std::move(result_media_type);
+        return Status::InvalidArgument(
+            "reported task result must be terminal");
     }
 
-    // Terminal execution no longer occupies the control-plane scheduling reservation
-    return registry_.Release(
-        node_id,
-        resources
-    );
+    std::lock_guard<std::mutex> lock(tasks_mu_);
+
+    const auto it =
+        tasks_.find(task_id);
+
+    if(it == tasks_.end())
+    {
+        return Status::NotFound(
+            "distributed task is not registered");
+    }
+
+    DistributedTaskRecord& record =
+        it->second;
+
+    if(record.execution_id != execution_id)
+    {
+        return Status::FailedPrecondition(
+            "execution does not match current task execution");
+    }
+
+    // --------------------------------------------------------
+    // Duplicate terminal report
+    // --------------------------------------------------------
+
+    if(IsTerminal(record.state))
+    {
+        const bool same_completion =
+            record.state == state &&
+            SameStatus(
+                record.terminal_status,
+                terminal_status) &&
+            record.result == result &&
+            record.result_media_type ==
+                result_media_type;
+
+        if(!same_completion)
+        {
+            return Status::FailedPrecondition(
+                "conflicting terminal result for "
+                "completed execution");
+        }
+
+        return Status::OK();
+    }
+
+    // --------------------------------------------------------
+    // FIRST terminal report
+    //
+    // Release the reservation while we still have the exact
+    // node/resources stored in the record.
+    // --------------------------------------------------------
+
+    const Status release_status =
+        registry_.Release(
+            record.node_id,
+            record.resources);
+
+    if(!release_status.ok())
+    {
+        return release_status;
+    }
+
+    // --------------------------------------------------------
+    // Only commit terminal state AFTER successful release.
+    // --------------------------------------------------------
+
+    record.state =
+        state;
+
+    record.terminal_status =
+        std::move(terminal_status);
+
+    record.result =
+        std::move(result);
+
+    record.result_media_type =
+        std::move(result_media_type);
+
+    return Status::OK();
 }
 
 Status ControlPlane::GetTaskRecord(

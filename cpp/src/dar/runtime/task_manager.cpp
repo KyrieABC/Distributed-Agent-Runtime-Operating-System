@@ -159,44 +159,71 @@ namespace dar
     // ?
     Status TaskManager::Complete(TaskID id, ExecutionOutcome outcome)
     {
-        std::lock_guard<std::mutex> lock(mu_);
+        TaskCompletionCallback callback;
+        TaskCompletion completion;
 
-        const auto it = records_.find(id);
-        if(it==records_.end())
         {
-            return Status::NotFound("task is not registered");
+            std::lock_guard<std::mutex> lock(mu_);
+
+            const auto it = records_.find(id);
+
+            if(it==records_.end())
+            {
+                return Status::NotFound("task is not registered");
+            }
+
+            Record& record = *it->second;
+
+            ExecutionState terminal_state;
+
+            if(outcome.status.ok())
+            {
+                terminal_state = ExecutionState::kSSucceeded;
+            }
+            else if(outcome.status.IsCancelled())
+            {
+                terminal_state = ExecutionState::kCancelled;
+            }
+            else
+            {
+                terminal_state = ExecutionState::kFailed;
+            }
+
+            Status transition = TransitionLocked(record, terminal_state);
+
+            if(!transition.ok())
+            {
+                return transition;
+            }
+
+            record.terminal_status = std::move(outcome.status);
+
+            record.result = std::move(outcome.result);
+
+            // Build an immutable completion event while authoritative task state is still protected
+            completion.task_id = record.spec.id;
+
+            completion.state = record.state;
+
+            completion.execution_id = record.execution_id;
+
+            completion.status = record.terminal_status;
+
+            completion.result = record.result;
+
+            callback = completion_callback_;
+
+            record.cv.notify_all();
         }
 
-        Record& record = *it->second;
-
-        ExecutionState terminal_state;
-
-        if(outcome.status.ok())
+        // Important:
+        /**
+         * Networking or arbitrary callback code must never run while TaskManager's mutex is held
+         */
+        if(callback)
         {
-            terminal_state = ExecutionState::kSSucceeded;
+            callback(completion);
         }
-        else if(outcome.status.IsCancelled())
-        {
-            terminal_state = ExecutionState::kCancelled;
-        }
-        else
-        {
-            terminal_state = ExecutionState::kFailed;
-        }
-
-        // Only RUNNING tasks may complete (is it okay to go to the terminal_stae determined by )
-        Status transition = TransitionLocked(record, terminal_state);
-
-        if(!transition.ok())
-        {
-            return transition;
-        }
-
-        record.terminal_status = std::move(outcome.status);
-        record.result = std::move(outcome.result);
-
-        // Wake every GetResult() waiter
-        record.cv.notify_all();
 
         return Status::OK();
     }
@@ -351,7 +378,7 @@ namespace dar
     {
         if(out==nullptr)
         {
-            return Status::InvalidArgument("result output must be null");
+            return Status::InvalidArgument("result output must not be null");
         }
 
         // condition_variable requires a lock that can be temporarily released while waiting
@@ -389,6 +416,13 @@ namespace dar
 
         *out = record.result;
         return Status::OK();
+    }
+
+    void TaskManager::SetCompletionCallback(TaskCompletionCallback callback)
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+
+        completion_callback_ = std::move(callback);
     }
 }
 

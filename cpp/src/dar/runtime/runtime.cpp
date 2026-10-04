@@ -279,4 +279,10 @@ namespace dar
 
         return Status::OK();
     }
+
+    // Very generic: Runtime("Something completed") not ("send this to the ControlPlane over gRPC")
+    void Runtime::SetCompletionCallback(TaskCompletionCallback callback)
+    {
+        task_manager_.SetCompletionCallback(std::move(callback));
+    }
 }

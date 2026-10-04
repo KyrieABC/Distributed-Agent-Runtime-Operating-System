@@ -105,6 +105,9 @@ namespace dar
             // The Queue_size() function within scheduler
             return scheduler_.Queue_size();
         }
+
+        void SetCompletionCallback(TaskCompletionCallback callback);
+
     private:
         RuntimeOptions options_;
 

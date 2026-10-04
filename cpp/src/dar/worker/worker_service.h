@@ -1,9 +1,12 @@
 #pragma once
 
+#include <mutex>
+#include <unordered_map>
 #include <grpcpp/grpcpp.h>
 
 #include "dar/runtime/runtime.h"
 #include "dar/worker/handler_registry.h"
+#include "dar/worker/result_reporter.h"
 
 #include "worker.grpc.pb.h"
 
@@ -47,18 +50,39 @@ class WorkerServiceImpl final
     : public proto::v1::WorkerService::Service
 {
 public:
+
+    /**
+     * (phase 3 stage 5) Incoming distributed request contains: ExecutionID = E1
+     * But, phase-1 scheduler  generates its own local ExecutionID when it calls MarkScheduled()
+     * 
+     * ControlPlane (ExecutionID: E1) -> WorkerService -> Runtime -> Phase 1 scheduler(ExecutionID: L7)
+     * (do NOT report L7 to ControlPlane)
+     * 
+     * ControlPlane knows: TaskID T1 -> ExecutionID E1
+     * 
+     * Worker needs to preserve: T1 -> remote E1 (?)
+     * WorkerServiceImpl owns the mapping
+     */
+
     WorkerServiceImpl(
         Runtime& runtime,
-        HandlerRegistry& registry);
+        HandlerRegistry& registry,
+        ResultReporter* result_reporter = nullptr
+    );
 
     grpc::Status LaunchTask(
         grpc::ServerContext* context,
         const proto::v1::LaunchTaskRequest* request,
         proto::v1::LaunchTaskResponse* response) override;
-
 private:
     Runtime& runtime_;
     HandlerRegistry& registry_;
+
+    ResultReporter* result_reporter_;
+
+    std::mutex executions_mu_;
+
+    std::unordered_map<TaskID, ExecutionID, StrongIDHash<TaskID>> remote_executions_;
 };
 
 }  // namespace dar

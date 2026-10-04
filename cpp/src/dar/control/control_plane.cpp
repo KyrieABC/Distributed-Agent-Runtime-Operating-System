@@ -26,6 +26,13 @@ ControlPlane::ControlPlane(
 {
 }
 
+/**
+ * Before (as of Phase 3 stage 4):
+ * reserve -> dispatch -> return IDs 
+ * 
+ * After (Phase 3 stage 5):
+ * reserve -> record E1 -> dispatch E1 -> worker executes
+ */
 
 Status ControlPlane::SubmitTask(
     const SubmitTaskSpec& submission,
@@ -134,6 +141,20 @@ Status ControlPlane::SubmitTask(
     // 4. Dispatch to selected node
     // --------------------------------------------------------
 
+    DistributedTaskRecord record;
+
+    record.task_id = task_id;
+    record.execution_id = execution_id;
+    record.node_id = selected_node.node_id;
+    record.resources = submission.resources;
+    record.state = DistributedTaskState::KRunning;
+
+    {
+        std::lock_guard<std::mutex> lock(tasks_mu_);
+
+        tasks_.emplace(task_id,std::move(record));
+    }
+
     status =
         node_manager_.DispatchTask(
             selected_node,
@@ -145,6 +166,12 @@ Status ControlPlane::SubmitTask(
     // rollback
     if(!status.ok())
     {
+        // rollback for task_manager record
+        {
+            std::lock_guard<std::mutex> lock(tasks_mu_);
+
+            tasks_.erase(task_id);
+        }
         // Worker never accepted the task.
         //
         // Restore cluster reservation.
@@ -174,4 +201,93 @@ Status ControlPlane::SubmitTask(
     return Status::OK();
 }
 
+
+// changes task state, RELEASES cluster resources (what stage 4 was missing)
+/**
+CPU = 1
+
+Submit
+  ↓
+schedulable = 0
+
+execute
+  ↓
+ReportTaskResult
+  ↓
+Release
+  ↓
+schedulable = 1
+ */
+Status ControlPlane::ReportTaskResult(
+    TaskID task_id,
+    ExecutionID execution_id,
+    DistributedTaskState state,
+    Status terminal_status,
+    std::string result, 
+    std::string result_media_type
+)
+{
+    NodeID node_id;
+    ResourceRequest resources;
+
+    {
+        std::lock_guard<std::mutex> lock(tasks_mu_);
+
+        const auto it = tasks_.find(task_id);
+
+        if(it == tasks_.end())
+        {
+            return Status::NotFound("distributed task is not registered");
+        }
+
+        DistributedTaskRecord& record = it->second;
+
+        if(record.execution_id!=execution_id)
+        {
+            return Status::FailedPrecondition("execution does not match current task execution");
+        }
+
+        if(state!=DistributedTaskState::KSucceeded && state!=DistributedTaskState::KFailed && state!=DistributedTaskState::KCanceled)
+        {
+            return Status::InvalidArgument("reported task result must be terminal");
+        }
+
+        node_id = record.node_id;
+        resources = record.resources;
+
+        record.state = state;
+        record.terminal_status = std::move(terminal_status);
+        record.result = std::move(result);
+        record.result_media_type = std::move(result_media_type);
+    }
+
+    // Terminal execution no longer occupies the control-plane scheduling reservation
+    return registry_.Release(
+        node_id,
+        resources
+    );
+}
+
+Status ControlPlane::GetTaskRecord(
+    TaskID task_id,
+    DistributedTaskRecord* out
+) const
+{
+    if(out==nullptr)
+    {
+        return Status::InvalidArgument("task record output must not be null");
+    }
+    std::lock_guard<std::mutex> lock(tasks_mu_);
+    
+    const auto it = tasks_.find(task_id);
+
+    if(it == tasks_.end())
+    {
+        return Status::NotFound("Distributed task is not registered");
+    }
+
+    *out = it->second;
+
+    return Status::OK();
+}
 }  // namespace dar

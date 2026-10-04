@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <functional>
 
 #include "dar/common/status.h"
 #include "dar/common/id.h"
@@ -36,6 +37,20 @@ namespace dar
         ExecutionID execution_id;
     };
 
+    struct TaskCompletion
+    {
+        TaskID task_id;
+
+        ExecutionState state{ExecutionState::kPending};
+
+        ExecutionID execution_id;
+
+        Status status;
+
+        std::string result;
+    };
+
+    using TaskCompletionCallback = std::function<void(const TaskCompletion&)>;
     // TaskManager
     /**
      * Authoritative owner of logical task state
@@ -110,6 +125,8 @@ namespace dar
         Status GetHandler(TaskID id, TaskHandler* out) const;
 
         Status GetCancellationToken(TaskID id,std::shared_ptr<std::atomic_bool>* out) const;
+    
+        void SetCompletionCallback(TaskCompletionCallback callback);
     private:
         struct Record{
             TaskSpec spec;
@@ -144,5 +161,7 @@ namespace dar
 
         // Record contains a condition_variable, so store records indirectly
         std::unordered_map<TaskID, std::unique_ptr<Record>, StrongIDHash<TaskID>> records_;
+
+        TaskCompletionCallback completion_callback_;
     };
 }

@@ -158,6 +158,7 @@ dar_phase3_worker
                dar
           Phase-1 Runtime
 ]]
+# For phase 3 stage 5: added result_reporter.cpp
 add_library(
     dar_phase3_worker
     STATIC 
@@ -165,7 +166,7 @@ add_library(
     src/dar/worker/handler_registry.cpp 
     src/dar/worker/builtin_handlers.cpp 
     src/dar/worker/worker_service.cpp 
-
+    src/dar/worker/result_reporter.cpp
 )
 
 target_include_directories(
@@ -228,6 +229,17 @@ This layer chooses NodeID.
 The existing Phase-1 scheduler still chooses WorkerID.
 ]]
 
+# added control_service.cpp & result_reporter.cpp for phase 3 stage 5
+#[[
+                 dar
+                  ↑
+          phase3_transport
+             ↑        ↑
+             │        │
+           worker   cluster
+             ↑        │
+             └────────┘
+]]
 add_library(
     dar_phase3_cluster 
     STATIC 
@@ -236,6 +248,9 @@ add_library(
     src/dar/node/node_manager.cpp 
 
     src/dar/control/control_plane.cpp 
+    src/dar/control/control_service.cpp
+
+    src/dar/worker/result_reporter.cpp
 )
 
 target_include_directories(

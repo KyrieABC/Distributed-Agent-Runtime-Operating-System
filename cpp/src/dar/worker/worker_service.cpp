@@ -78,11 +78,43 @@ ToProto(dar_status, pointer)
 
 WorkerServiceImpl::WorkerServiceImpl(
     Runtime& runtime,
-    HandlerRegistry& registry)
-    : runtime_(runtime),
-      registry_(registry)
-{
-}
+    HandlerRegistry& registry,
+    ResultReporter* result_reporter)
+    : runtime_(runtime), 
+    registry_(registry), 
+    result_reporter_(result_reporter)
+    {
+        runtime_.SetCompletionCallback(
+            [this](const TaskCompletion& completion)
+            {
+                ExecutionID remote_execution_id;
+
+                {
+                    std::lock_guard<std::mutex> lock(executions_mu_);
+
+                    const auto it = remote_executions_.find(completion.task_id);
+
+                    if(it == remote_executions_.end())
+                    {
+                        return;
+                    }
+
+                    remote_execution_id = it->second;
+
+                    remote_executions_.erase(it);
+                }
+
+                (void)result_reporter_->Report(
+                    completion.task_id,
+                    remote_execution_id,
+                    completion.state,
+                    completion.status,
+                    completion.result,
+                    std::chrono::seconds(2)
+                );
+            }
+        );
+    }
 
 grpc::Status WorkerServiceImpl::LaunchTask(
     grpc::ServerContext*,
@@ -250,6 +282,12 @@ public:
                 result);
         };
 
+    if(result_reporter_!=nullptr)
+    {
+        std::lock_guard<std::mutex> lock(executions_mu_);
+
+        remote_executions_[task_id] = remote_execution_id;
+    }
     // --------------------------------------------------------
     // 6. CROSS THE ARCHITECTURAL BOUNDARY
     // --------------------------------------------------------
@@ -257,6 +295,13 @@ public:
     status = runtime_.Submit(
         std::move(spec),
         std::move(local_handler));
+
+    if(!status.ok() && result_reporter_ != nullptr)
+    {
+        std::lock_guard<std::mutex> lock(executions_mu_);
+
+        remote_executions_.erase(task_id);
+    }
 
     serialization::ToProto(status, response->mutable_status());
 

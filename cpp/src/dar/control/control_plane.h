@@ -1,5 +1,6 @@
 #pragma once
 
+
 /**
 CONTROL PLANE PROCESS                   WORKER NODE PROCESS
 CLIENT SIDE                             SERVER SIDE
@@ -40,6 +41,8 @@ WorkerService::Stub
  */
 #include <chrono>
 #include <string>
+#include <mutex>
+#include <unordered_map>
 
 #include "dar/common/id.h"
 #include "dar/common/status.h"
@@ -77,6 +80,32 @@ struct SubmitTaskResult
     NodeID node_id;
 };
 
+enum class DistributedTaskState
+{
+    KRunning,
+    KSucceeded,
+    KFailed,
+    KCanceled
+};
+
+struct DistributedTaskRecord
+{
+    TaskID task_id;
+
+    ExecutionID execution_id;
+
+    NodeID node_id;
+
+    ResourceRequest resources;
+
+    DistributedTaskState state{DistributedTaskState::KRunning};
+
+    Status terminal_status;
+
+    std::string result;
+
+    std::string result_media_type;
+};
 
 class ControlPlane final
 {
@@ -89,10 +118,31 @@ public:
         const SubmitTaskSpec& submission,
         SubmitTaskResult* out);
 
+    Status ReportTaskResult(
+        TaskID task_id,
+        ExecutionID execution_id);
+
+    Status ReportTaskResult(
+        TaskID task_id,
+        ExecutionID execution_id,
+        DistributedTaskState state,
+        Status terminal_state,
+        std::string result,
+        std::string result_media_type
+    );
+
+    Status GetTaskRecord(
+        TaskID task_id,
+        DistributedTaskRecord* out
+    ) const;
 private:
     NodeRegistry& registry_;
 
     NodeManager& node_manager_;
+
+    mutable std::mutex tasks_mu_;
+
+    std::unordered_map<TaskID, DistributedTaskRecord, StrongIDHash<TaskID>> tasks_;
 };
 
 }  // namespace dar

@@ -131,6 +131,10 @@ public:
         const SubmitTaskSpec& submission,
         SubmitTaskResult* out);
 
+    Status CancelTask(
+        TaskID task_id,
+        std::chrono::milliseconds timeout = std::chrono::seconds(2));
+
     Status ReportTaskResult(
         TaskID task_id,
         ExecutionID execution_id);

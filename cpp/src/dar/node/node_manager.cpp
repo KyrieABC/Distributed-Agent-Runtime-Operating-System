@@ -181,4 +181,63 @@ stub->LaunchTask(...) returns
         response.status());
 }
 
+Status NodeManager::CancelTask(
+    const NodeRecord& node,
+    TaskID task_id,
+    ExecutionID execution_id,
+    std::chrono::milliseconds timeout)
+{
+    if(task_id.IsNil())
+    {
+        return Status::InvalidArgument(
+            "cancel task id cannot be nil");
+    }
+
+    if(execution_id.IsNil())
+    {
+        return Status::InvalidArgument(
+            "cancel execution id cannot be nil");
+    }
+
+    auto channel =
+        rpc_client_.Channel(
+            node.worker_endpoint);
+
+    auto stub =
+        proto::v1::WorkerService::NewStub(
+            channel);
+
+    proto::v1::CancelWorkerTaskRequest request;
+
+    serialization::ToProto(
+        task_id,
+        request.mutable_task_id());
+
+    serialization::ToProto(
+        execution_id,
+        request.mutable_execution_id());
+
+    proto::v1::CancelWorkerTaskResponse response;
+
+    auto context =
+        rpc_client_.CreateContext(
+            timeout);
+
+    const grpc::Status transport_status =
+        stub->CancelTask(
+            context.get(),
+            request,
+            &response);
+
+    if(!transport_status.ok())
+    {
+        return Status::Unavailable(
+            "CancelTask RPC failed: " +
+            transport_status.error_message());
+    }
+
+    return serialization::FromProtoStatus(
+        response.status());
+}
+
 }  // namespace dar

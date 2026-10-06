@@ -75,6 +75,11 @@ public:
         grpc::ServerContext* context,
         const proto::v1::LaunchTaskRequest* request,
         proto::v1::LaunchTaskResponse* response) override;
+
+    grpc::Status CancelTask(
+        grpc::ServerContext* context,
+        const proto::v1::CancelWorkerTaskRequest* request,
+        proto::v1::CancelWorkerTaskResponse* response) override;
 private:
     // For Phase 3 stage 5B, replace remote_executions_ with an ExecutionIDkkeyed admission ledge
     struct ExecutionAdmission

@@ -228,60 +228,123 @@ namespace dar
         return Status::OK();
     }
 
-    Status TaskManager::Cancel(TaskID id)
+Status TaskManager::Cancel(TaskID id)
+{
+    TaskCompletionCallback callback;
+    TaskCompletion completion;
+
+    bool completed_immediately = false;
+
     {
         std::lock_guard<std::mutex> lock(mu_);
 
-        const auto it = records_.find(id);
+        const auto it =
+            records_.find(id);
+
         if(it == records_.end())
         {
-            return Status::NotFound("task is not registered");
+            return Status::NotFound(
+                "task is not registered");
         }
 
-        Record& record = *it->second;
+        Record& record =
+            *it->second;
 
-        /**
-         * Queued -> no code is executing yet
-         * Therefore cancellation can become terminal immediately
-         */
-        if(record.state==ExecutionState::kQueued)
+        // ----------------------------------------------------
+        // QUEUED
+        //
+        // No handler is executing.
+        // Cancellation is terminal immediately.
+        // ----------------------------------------------------
+
+        if(record.state == ExecutionState::kQueued)
         {
-            Status transition = TransitionLocked(record, ExecutionState::kCancelled);
+            Status transition =
+                TransitionLocked(
+                    record,
+                    ExecutionState::kCancelled);
+
             if(!transition.ok())
             {
                 return transition;
             }
-            record.cancel_token->store(true, std::memory_order_release);
-            record.terminal_status=Status::Cancelled("task cancelled before execution");
+
+            record.cancel_token->store(
+                true,
+                std::memory_order_release);
+
+            record.terminal_status =
+                Status::Cancelled(
+                    "task cancelled before execution");
+
             record.result.clear();
+
+            completion.task_id =
+                record.spec.id;
+
+            completion.state =
+                record.state;
+
+            completion.execution_id =
+                record.execution_id;
+
+            completion.status =
+                record.terminal_status;
+
+            completion.result =
+                record.result;
+
+            callback =
+                completion_callback_;
+
+            completed_immediately = true;
+
             record.cv.notify_all();
-            
-            return Status::OK();
         }
-        
-        //Running
-        /**
-         * Don't do: record.state = KCancelled (Handler is still executing)
-         * Instead:
-         *   Running - (cancellation requested) -> Running
-         *   RuntimeContext sees the token.
-         *   Eventually the handler returns Status::Cancelled(), after which complete() perform (running -> cancelled)
-         */
-        if(record.state==ExecutionState::kRunning)
+
+        // ----------------------------------------------------
+        // RUNNING
+        //
+        // Cancellation is cooperative.
+        // Do not terminalize yet.
+        // ----------------------------------------------------
+
+        else if(record.state == ExecutionState::kRunning)
         {
-            record.cancel_token->store(true,std::memory_order_release);
+            record.cancel_token->store(
+                true,
+                std::memory_order_release);
+
             return Status::OK();
         }
 
-        // Cancellation afer completion doesn't rewrite history
-        if(IsTerminal(record.state))
+        // ----------------------------------------------------
+        // TERMINAL
+        // ----------------------------------------------------
+
+        else if(IsTerminal(record.state))
         {
-            return Status::FailedPrecondition("task is already terminal");
+            return Status::FailedPrecondition(
+                "task is already terminal");
         }
 
-        // Currently do not cancel task in Scheduled-but-not-yet-running handoff window
-        return Status::FailedPrecondition("task cannot be cancelled in its current state");
+        else
+        {
+            // Scheduled handoff remains unchanged in 5G.
+            return Status::FailedPrecondition(
+                "task cannot be cancelled in its current state");
+        }
     }
+
+    // Never execute arbitrary callback/networking code while
+    // TaskManager::mu_ is held.
+    if(completed_immediately && callback)
+    {
+        callback(completion);
+    }
+
+    return Status::OK();
+}
 
     // Store the result to output(as using pointer, so it could be accessed outside)
     /**

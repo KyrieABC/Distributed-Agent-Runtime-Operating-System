@@ -74,6 +74,17 @@ ToProto(dar_status, pointer)
     return grpc::Status::OK;
 }
 
+grpc::Status CancellationFailure(
+    const Status& status,
+    proto::v1::CancelWorkerTaskResponse* response)
+{
+    serialization::ToProto(
+        status,
+        response->mutable_status());
+
+    return grpc::Status::OK;
+}
+
 }  // namespace
 
 WorkerServiceImpl::WorkerServiceImpl(
@@ -345,6 +356,100 @@ public:
     serialization::ToProto(status, response->mutable_status());
 
     // Launchtask reports admission, not completion
+    return grpc::Status::OK;
+}
+
+grpc::Status WorkerServiceImpl::CancelTask(
+    grpc::ServerContext*,
+    const proto::v1::CancelWorkerTaskRequest* request,
+    proto::v1::CancelWorkerTaskResponse* response)
+{
+    if(request == nullptr || response == nullptr)
+    {
+        return grpc::Status(
+            grpc::StatusCode::INTERNAL,
+            "gRPC supplied null request/response");
+    }
+
+    TaskID task_id;
+
+    Status status =
+        serialization::FromProto(
+            request->task_id(),
+            &task_id);
+
+    if(!status.ok())
+    {
+        return CancellationFailure(
+            status,
+            response);
+    }
+
+    ExecutionID execution_id;
+
+    status =
+        serialization::FromProto(
+            request->execution_id(),
+            &execution_id);
+
+    if(!status.ok())
+    {
+        return CancellationFailure(
+            status,
+            response);
+    }
+
+    // --------------------------------------------------------
+    // Verify distributed execution identity.
+    // --------------------------------------------------------
+
+    {
+        std::lock_guard<std::mutex> lock(
+            executions_mu_);
+
+        const auto it =
+            executions_.find(execution_id);
+
+        if(it == executions_.end())
+        {
+            return CancellationFailure(
+                Status::NotFound(
+                    "distributed execution is not known by worker"),
+                response);
+        }
+
+        if(it->second.task_id != task_id)
+        {
+            return CancellationFailure(
+                Status::FailedPrecondition(
+                    "execution is associated with a different task"),
+                response);
+        }
+
+        if(!it->second.admission_status.ok())
+        {
+            return CancellationFailure(
+                Status::FailedPrecondition(
+                    "execution was not admitted by local runtime"),
+                response);
+        }
+    }
+
+    // IMPORTANT:
+    //
+    // Do NOT hold executions_mu_ while calling Runtime::Cancel().
+    //
+    // A queued cancellation may synchronously produce a completion
+    // callback, and that callback needs executions_mu_ to recover
+    // the remote ExecutionID.
+
+    status =
+        runtime_.Cancel(task_id);
+
+    serialization::ToProto(
+        status,
+        response->mutable_status());
+
     return grpc::Status::OK;
 }
 

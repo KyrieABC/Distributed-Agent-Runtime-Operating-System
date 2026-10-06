@@ -34,6 +34,12 @@ public:
         const proto::v1::TaskDescriptor& task,
         std::chrono::milliseconds timeout);
 
+    Status CancelTask(
+        const NodeRecord& node,
+        TaskID task_id,
+        ExecutionID execution_id,
+        std::chrono::milliseconds timeout);
+
 private:
     NodeRegistry& registry_;
 

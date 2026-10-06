@@ -1,5 +1,6 @@
-#include "dar/control/control_service.h"
+#include <chrono>
 
+#include "dar/control/control_service.h"
 #include "dar/serialization/serialization.h"
 
 namespace dar
@@ -224,6 +225,46 @@ grpc::Status ControlServiceImpl::Heartbeat(
             heartbeat.incarnation(),
             reported_available,
             heartbeat.running_tasks());
+
+    serialization::ToProto(
+        status,
+        response->mutable_status());
+
+    return grpc::Status::OK;
+}
+
+grpc::Status ControlServiceImpl::CancelTask(
+    grpc::ServerContext*,
+    const proto::v1::CancelTaskRequest* request,
+    proto::v1::CancelTaskResponse* response)
+{
+    if(request == nullptr || response == nullptr)
+    {
+        return grpc::Status(
+            grpc::StatusCode::INTERNAL,
+            "gRPC supplied null request/response");
+    }
+
+    TaskID task_id;
+
+    Status status =
+        serialization::FromProto(
+            request->task_id(),
+            &task_id);
+
+    if(!status.ok())
+    {
+        serialization::ToProto(
+            status,
+            response->mutable_status());
+
+        return grpc::Status::OK;
+    }
+
+    status =
+        control_plane_.CancelTask(
+            task_id,
+            std::chrono::seconds(2));
 
     serialization::ToProto(
         status,

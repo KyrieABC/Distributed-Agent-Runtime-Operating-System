@@ -33,6 +33,11 @@ public:
         const proto::v1::HeartbeatRequest* request,
         proto::v1::HeartbeatResponse* response) override;
 
+    grpc::Status CancelTask(
+        grpc::ServerContext* context,
+        const proto::v1::CancelTaskRequest* request,
+        proto::v1::CancelTaskResponse* response) override;
+
     grpc::Status ReportTaskResult(
         grpc::ServerContext* context,
         const proto::v1::ReportTaskResultRequest* request,

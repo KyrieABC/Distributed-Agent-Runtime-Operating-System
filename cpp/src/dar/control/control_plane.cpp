@@ -318,6 +318,86 @@ Status ControlPlane::SubmitTask(
     return Status::OK();
 }
 
+Status ControlPlane::CancelTask(
+    TaskID task_id,
+    std::chrono::milliseconds timeout)
+{
+    if(task_id.IsNil())
+    {
+        return Status::InvalidArgument(
+            "cancel task id cannot be nil");
+    }
+
+    DistributedTaskRecord record;
+
+    // --------------------------------------------------------
+    // 1. Snapshot authoritative task routing information.
+    // --------------------------------------------------------
+
+    {
+        std::lock_guard<std::mutex> lock(
+            tasks_mu_);
+
+        const auto it =
+            tasks_.find(task_id);
+
+        if(it == tasks_.end())
+        {
+            return Status::NotFound(
+                "distributed task is not registered");
+        }
+
+        if(IsTerminal(it->second.state))
+        {
+            return Status::FailedPrecondition(
+                "distributed task is already terminal");
+        }
+
+        record =
+            it->second;
+    }
+
+    // --------------------------------------------------------
+    // 2. Verify that the same worker lifetime still exists.
+    // --------------------------------------------------------
+
+    NodeRecord node;
+
+    Status status =
+        registry_.GetNode(
+            record.node_id,
+            &node);
+
+    if(!status.ok())
+    {
+        return status;
+    }
+
+    if(node.incarnation !=
+       record.node_incarnation)
+    {
+        return Status::FailedPrecondition(
+            "task belongs to an obsolete node incarnation");
+    }
+
+    if(node.state == NodeState::kDead)
+    {
+        return Status::Unavailable(
+            "task worker node is dead");
+    }
+
+    // --------------------------------------------------------
+    // 3. Send cancellation request to worker.
+    //
+    // DO NOT hold tasks_mu_ across network I/O.
+    // --------------------------------------------------------
+
+    return node_manager_.CancelTask(
+        node,
+        record.task_id,
+        record.execution_id,
+        timeout);
+}
 
 // changes task state, RELEASES cluster resources (what stage 4 was missing)
 /**

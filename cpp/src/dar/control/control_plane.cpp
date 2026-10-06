@@ -1,3 +1,47 @@
+/**
+(In real control_plane_main.cpp- process/application that owns the ControlPlane)Wire FailureDetector → ControlPlane
+
+control_plane_main.cc
+
+main()
+ │
+ ├── ConnectionPool
+ ├── RpcClient
+ ├── NodeRegistry
+ ├── NodeManager
+ ├── ControlPlane
+ ├── ControlServiceImpl
+ ├── FailureDetector       ← HERE
+ └── RpcServer
+
+Where you construct the long-lived control-plane components, wire:
+FailureDetector failure_detector(
+    node_registry);
+
+failure_detector.SetNodeDeadCallback(
+    [&control_plane](
+        NodeID node_id,
+        std::uint64_t incarnation)
+    {
+        control_plane.HandleNodeDead(
+            node_id,
+            incarnation);
+    });
+
+Status detector_status =
+    failure_detector.Start();
+
+if(!detector_status.ok())
+{
+    // handle startup failure
+}
+
+And on shutdown:
+failure_detector.Shutdown();
+
+The detector should stop before destroying either ControlPlane or NodeRegistry.
+ */
+
 #include "dar/control/control_plane.h"
 
 #include <chrono>
@@ -217,6 +261,8 @@ Status ControlPlane::SubmitTask(
     record.task_id = task_id;
     record.execution_id = execution_id;
     record.node_id = selected_node.node_id;
+    // That prevents a later failure notification for one lifetime from accidentally killing work belonging to another lifetime
+    record.node_incarnation = selected_node.incarnation;
     record.resources = submission.resources;
     record.state = DistributedTaskState::KRunning;
 
@@ -400,6 +446,62 @@ Status ControlPlane::ReportTaskResult(
 
     record.result_media_type =
         std::move(result_media_type);
+
+    return Status::OK();
+}
+
+
+/**
+node dies
+    ↓
+current execution attempt fails
+    ↓
+Status::Unavailable
+ */
+Status ControlPlane::HandleNodeDead(
+    NodeID node_id,
+    std::uint64_t incarnation)
+{
+    std::lock_guard<std::mutex> lock(tasks_mu_);
+
+    for(auto& [task_id, record] : tasks_)
+    {
+        if(record.node_id != node_id)
+        {
+            continue;
+        }
+
+        if(record.node_incarnation != incarnation)
+        {
+            continue;
+        }
+
+        if(record.state !=
+           DistributedTaskState::KRunning)
+        {
+            continue;
+        }
+
+        const Status release_status =
+            registry_.Release(
+                record.node_id,
+                record.resources);
+
+        if(!release_status.ok())
+        {
+            return release_status;
+        }
+
+        record.state =
+            DistributedTaskState::KFailed;
+
+        record.terminal_status =
+            Status::Unavailable(
+                "worker node became unavailable");
+
+        record.result.clear();
+        record.result_media_type.clear();
+    }
 
     return Status::OK();
 }

@@ -49,6 +49,12 @@ struct NodeRecord
     std::chrono::steady_clock::time_point last_heartbeat_received{};
 };
 
+struct DeadNodeLifetime
+{
+    NodeID node_id;
+    std::uint64_t incarnation{0};
+};
+
 class NodeRegistry final
 {
 public:
@@ -69,6 +75,11 @@ public:
         const ResourceSet& reported_available,
         std::uint32_t running_tasks);
 
+    std::vector<DeadNodeLifetime> UpdateLiveness(
+        std::chrono::steady_clock::time_point now,
+        std::chrono::milliseconds suspect_timeout,
+        std::chrono::milliseconds dead_timeout);
+    
     Status GetNode(
         NodeID node_id,
         NodeRecord* out) const;

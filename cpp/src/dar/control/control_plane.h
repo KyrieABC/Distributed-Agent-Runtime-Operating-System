@@ -106,6 +106,8 @@ struct DistributedTaskRecord
     std::string result;
 
     std::string result_media_type;
+
+    std::uint64_t node_incarnation{0};
 };
 
 class ControlPlane final
@@ -141,6 +143,10 @@ public:
         std::string result,
         std::string result_media_type
     );
+
+    Status HandleNodeDead(
+        NodeID node_id,
+        std::uint64_t incarnation);
 
     Status GetTaskRecord(
         TaskID task_id,

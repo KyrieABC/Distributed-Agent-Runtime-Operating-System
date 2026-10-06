@@ -182,6 +182,17 @@ Status NodeRegistry::Heartbeat(
             "heartbeat node incarnation does not match");
     }
 
+    /**
+    SUSPECT + heartbeat → ALIVE
+    DEAD    + heartbeat → reject
+    DEAD    + newer incarnation registration → ALIVE
+     */
+    if(stored.record.state == NodeState::kDead)
+    {
+        return Status::FailedPrecondition(
+        "dead node incarnation cannot be revived by heartbeat");
+    } 
+
     stored.record.reported_available =
         reported_available;
 
@@ -191,9 +202,79 @@ Status NodeRegistry::Heartbeat(
     stored.record.last_heartbeat_received =
         std::chrono::steady_clock::now();
 
+    // A valid heartbeat from the current lifetime revives a
+    // SUSPECT node. A DEAD lifetime cannot reach this point.
+    stored.record.state = NodeState::kAlive;
+
     // Do NOT modify schedulable_available or schedulable_pool here.
 
     return Status::OK();
+}
+
+std::vector<DeadNodeLifetime>
+NodeRegistry::UpdateLiveness(
+    std::chrono::steady_clock::time_point now,
+    std::chrono::milliseconds suspect_timeout,
+    std::chrono::milliseconds dead_timeout)
+{
+    std::vector<DeadNodeLifetime> newly_dead;
+
+    if(suspect_timeout.count() < 0 ||
+       dead_timeout.count() < 0 ||
+       suspect_timeout >= dead_timeout)
+    {
+        return newly_dead;
+    }
+
+    std::lock_guard<std::mutex> lock(mu_);
+
+    for(const NodeID& node_id : registration_order_)
+    {
+        auto it = nodes_.find(node_id);
+
+        if(it == nodes_.end())
+        {
+            continue;
+        }
+
+        NodeRecord& node =
+            it->second.record;
+
+        // DEAD is terminal for this incarnation.
+        if(node.state == NodeState::kDead)
+        {
+            continue;
+        }
+
+        const auto elapsed =
+            now - node.last_heartbeat_received;
+
+        if(elapsed >= dead_timeout)
+        {
+            node.state =
+                NodeState::kDead;
+
+            newly_dead.push_back(
+                DeadNodeLifetime{
+                    node.node_id,
+                    node.incarnation});
+
+            continue;
+        }
+
+        if(elapsed >= suspect_timeout)
+        {
+            node.state =
+                NodeState::kSuspect;
+
+            continue;
+        }
+
+        node.state =
+            NodeState::kAlive;
+    }
+
+    return newly_dead;
 }
 
 Status NodeRegistry::RemoveNode(

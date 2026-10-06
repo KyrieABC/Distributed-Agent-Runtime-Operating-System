@@ -246,6 +246,7 @@ add_library(
 
     src/dar/node/node_registry.cpp 
     src/dar/node/node_manager.cpp 
+    src/dar/node/failure_detector.cpp
 
     src/dar/control/control_plane.cpp 
     src/dar/control/control_service.cpp
@@ -421,6 +422,7 @@ if(DAR_BUILD_TESTS)
             test/phase3/node_registry_test.cpp 
             test/phase3/node_registration_test.cpp
             test/phase3/heartbeat_test.cpp
+            test/phase3/failure_detector_test.cpp
         )
 
         # gives dar_tests two dependencies:

@@ -171,6 +171,67 @@ grpc::Status ControlServiceImpl::RemoveNode(
     return grpc::Status::OK;
 }
 
+grpc::Status ControlServiceImpl::Heartbeat(
+    grpc::ServerContext*,
+    const proto::v1::HeartbeatRequest* request,
+    proto::v1::HeartbeatResponse* response)
+{
+    if(request == nullptr || response == nullptr)
+    {
+        return grpc::Status(
+            grpc::StatusCode::INTERNAL,
+            "gRPC supplied null request/response");
+    }
+
+    const proto::v1::NodeHeartbeat& heartbeat =
+        request->heartbeat();
+
+    NodeID node_id;
+
+    Status status =
+        serialization::FromProto(
+            heartbeat.node_id(),
+            &node_id);
+
+    if(!status.ok())
+    {
+        serialization::ToProto(
+            status,
+            response->mutable_status());
+
+        return grpc::Status::OK;
+    }
+
+    ResourceSet reported_available;
+
+    status =
+        serialization::FromProto(
+            heartbeat.available_resources(),
+            &reported_available);
+
+    if(!status.ok())
+    {
+        serialization::ToProto(
+            status,
+            response->mutable_status());
+
+        return grpc::Status::OK;
+    }
+
+    status =
+        control_plane_.Heartbeat(
+            node_id,
+            heartbeat.incarnation(),
+            reported_available,
+            heartbeat.running_tasks());
+
+    serialization::ToProto(
+        status,
+        response->mutable_status());
+
+    return grpc::Status::OK;
+}
+
 grpc::Status ControlServiceImpl::ReportTaskResult(
     grpc::ServerContext*,
     const proto::v1::ReportTaskResultRequest* request,

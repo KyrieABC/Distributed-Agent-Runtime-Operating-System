@@ -23,6 +23,12 @@ public:
 
     Status RegisterNode(NodeRecord node);
 
+    Status Heartbeat(
+        NodeID node_id,
+        std::uint64_t incarnation,
+        const ResourceSet& reported_available,
+        std::uint32_t running_tasks);
+
     Status DispatchTask(
         const NodeRecord& node,
         const proto::v1::TaskDescriptor& task,

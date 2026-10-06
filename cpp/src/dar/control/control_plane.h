@@ -119,6 +119,12 @@ public:
 
     Status RemoveNode(NodeID node_id, std::uint64_t incarnation);
 
+    Status Heartbeat(
+        NodeID node_id,
+        std::uint64_t incarnation,
+        const ResourceSet& reported_available,
+        std::uint32_t running_tasks);
+
     Status SubmitTask(
         const SubmitTaskSpec& submission,
         SubmitTaskResult* out);

@@ -75,6 +75,18 @@ Status ControlPlane::RegisterNode(
         std::move(node));
 }
 
+Status ControlPlane::Heartbeat(
+    NodeID node_id,
+    std::uint64_t incarnation,
+    const ResourceSet& reported_available,
+    std::uint32_t running_tasks)
+{
+    return node_manager_.Heartbeat(
+        node_id,
+        incarnation,
+        reported_available,
+        running_tasks);
+}
 
 Status ControlPlane::RemoveNode(
     NodeID node_id,

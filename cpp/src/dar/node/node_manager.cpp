@@ -24,6 +24,26 @@ Status NodeManager::RegisterNode(NodeRecord node)
         std::move(node));
 }
 
+/**
+ * ownership pattern established in 5D
+ControlPlane
+    ↓
+NodeManager
+    ↓
+NodeRegistry
+ */
+Status NodeManager::Heartbeat(
+    NodeID node_id,
+    std::uint64_t incarnation,
+    const ResourceSet& reported_available,
+    std::uint32_t running_tasks)
+{
+    return registry_.Heartbeat(
+        node_id,
+        incarnation,
+        reported_available,
+        running_tasks);
+}
 
 Status NodeManager::DispatchTask(
     const NodeRecord& node,

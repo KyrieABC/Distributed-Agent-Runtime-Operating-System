@@ -59,6 +59,9 @@ Status NodeRegistry::RegisterNode(NodeRecord node)
         node.schedulable_available =
             node.reported_available;
 
+        node.last_heartbeat_received =
+            std::chrono::steady_clock::now();
+
         nodes_.emplace(
             node_id,
             StoredNode(std::move(node)));
@@ -129,6 +132,9 @@ Status NodeRegistry::RegisterNode(NodeRecord node)
     node.schedulable_available =
         node.reported_available;
 
+    node.last_heartbeat_received =
+        std::chrono::steady_clock::now();
+
     it->second =
         StoredNode(std::move(node));
 
@@ -138,6 +144,57 @@ Status NodeRegistry::RegisterNode(NodeRecord node)
     return Status::OK();
 }
 
+Status NodeRegistry::Heartbeat(
+    NodeID node_id,
+    std::uint64_t incarnation,
+    const ResourceSet& reported_available,
+    std::uint32_t running_tasks)
+{
+    if(node_id.IsNil())
+    {
+        return Status::InvalidArgument(
+            "heartbeat node id cannot be nil");
+    }
+
+    if(incarnation == 0)
+    {
+        return Status::InvalidArgument(
+            "heartbeat incarnation must be greater than zero");
+    }
+
+    std::lock_guard<std::mutex> lock(mu_);
+
+    auto it =
+        nodes_.find(node_id);
+
+    if(it == nodes_.end())
+    {
+        return Status::NotFound(
+            "heartbeat node is not registered");
+    }
+
+    StoredNode& stored =
+        it->second;
+
+    if(stored.record.incarnation != incarnation)
+    {
+        return Status::FailedPrecondition(
+            "heartbeat node incarnation does not match");
+    }
+
+    stored.record.reported_available =
+        reported_available;
+
+    stored.record.running_tasks =
+        running_tasks;
+
+    stored.record.last_heartbeat_received =
+        std::chrono::steady_clock::now();
+
+    // Do NOT modify schedulable_available or schedulable_pool here.
+
+    return Status::OK();
+}
 
 Status NodeRegistry::RemoveNode(
     NodeID node_id,

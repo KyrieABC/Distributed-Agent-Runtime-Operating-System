@@ -28,6 +28,11 @@ public:
         proto::v1::RemoveNodeResponse* response
     ) override;
 
+    grpc::Status Heartbeat(
+        grpc::ServerContext* context,
+        const proto::v1::HeartbeatRequest* request,
+        proto::v1::HeartbeatResponse* response) override;
+
     grpc::Status ReportTaskResult(
         grpc::ServerContext* context,
         const proto::v1::ReportTaskResultRequest* request,

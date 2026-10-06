@@ -4,6 +4,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <chrono>
+#include <cstdint>
 
 #include "dar/common/id.h"
 #include "dar/common/status.h"
@@ -27,19 +29,25 @@ struct NodeRecord
 
     ResourceSet total_resources;
 
-    // Last capacity reported by the remote worker.
+    // Last capacity reported by the worker.
     ResourceSet reported_available;
 
     // Control-plane-owned reservation ledger.
-    //
-    // This is what placement uses.
     ResourceSet schedulable_available;
 
     std::uint64_t incarnation{0};
 
     NodeState state{NodeState::kAlive};
-};
 
+    // Last worker-reported running task count.
+    std::uint32_t running_tasks{0};
+
+    // LOCAL receipt time of the most recently accepted heartbeat.
+    //
+    // This uses steady_clock deliberately. Failure detection must not
+    // depend on synchronization between worker and control-plane clocks.
+    std::chrono::steady_clock::time_point last_heartbeat_received{};
+};
 
 class NodeRegistry final
 {
@@ -54,6 +62,12 @@ public:
     Status RemoveNode(
         NodeID node_id,
         std::uint64_t incarnation);
+    
+    Status Heartbeat(
+        NodeID node_id,
+        std::uint64_t incarnation,
+        const ResourceSet& reported_available,
+        std::uint32_t running_tasks);
 
     Status GetNode(
         NodeID node_id,

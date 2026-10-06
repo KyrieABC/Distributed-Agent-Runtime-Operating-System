@@ -6,6 +6,22 @@
 namespace dar
 {
 
+/**
+ Registry has nothing:
+    Register(N1, 1) → OK
+
+Registry has N1/1:
+    Register(N1, 1) identical → OK
+
+Registry has N1/1:
+    Register(N1, 1) conflicting → FailedPrecondition
+
+Registry has N1/1:
+    Register(N1, 2) → OK, replace lifetime
+
+Registry has N1/2:
+    Register(N1, 1) → FailedPrecondition
+ */
 Status NodeRegistry::RegisterNode(NodeRecord node)
 {
     std::lock_guard<std::mutex> lock(mu_);
@@ -22,28 +38,102 @@ Status NodeRegistry::RegisterNode(NodeRecord node)
             "worker endpoint cannot be empty");
     }
 
-    if(nodes_.find(node.node_id) != nodes_.end())
+    if(node.incarnation == 0)
     {
-        return Status::AlreadyExists(
-            "node is already registered");
+        return Status::InvalidArgument(
+            "node incarnation must be greater than zero");
     }
 
-    // At initial registration there are no control-plane reservations yet.
+    const NodeID node_id =
+        node.node_id;
+
+    auto it =
+        nodes_.find(node_id);
+
+    // --------------------------------------------------------
+    // Brand-new NodeID
+    // --------------------------------------------------------
+
+    if(it == nodes_.end())
+    {
+        node.schedulable_available =
+            node.reported_available;
+
+        nodes_.emplace(
+            node_id,
+            StoredNode(std::move(node)));
+
+        registration_order_.push_back(
+            node_id);
+
+        return Status::OK();
+    }
+
+    const std::uint64_t stored_incarnation =
+        it->second.record.incarnation;
+
+    // --------------------------------------------------------
+    // Stale registration
     //
-    // Therefore schedulable capacity begins from the worker's reported
-    // availability.
+    // Example:
+    //
+    // stored   = (N1, incarnation 2)
+    // incoming = (N1, incarnation 1)
+    // --------------------------------------------------------
+
+    if(node.incarnation < stored_incarnation)
+    {
+        return Status::FailedPrecondition(
+            "stale node incarnation");
+    }
+
+    // --------------------------------------------------------
+    // Duplicate registration of the SAME lifetime.
+    //
+    // Registration is idempotent.
+    //
+    // Do NOT reset the ResourcePool here. The control plane
+    // may already have reservations against this incarnation.
+    // --------------------------------------------------------
+
+    if(node.incarnation == stored_incarnation)
+    {
+        const NodeRecord& existing =
+            it->second.record;
+
+        if(
+            existing.worker_endpoint !=
+                node.worker_endpoint ||
+            existing.total_resources !=
+                node.total_resources)
+        {
+            return Status::FailedPrecondition(
+                "conflicting registration for "
+                "current node incarnation");
+        }
+
+        return Status::OK();
+    }
+
+    // --------------------------------------------------------
+    // Newer incarnation.
+    //
+    // Same logical NodeID, but a new process lifetime.
+    //
+    // Phase 5D only replaces the registration.
+    //
+    // Handling executions belonging to the dead incarnation
+    // belongs to failure handling in 5F.
+    // --------------------------------------------------------
+
     node.schedulable_available =
         node.reported_available;
 
-    const NodeID node_id = node.node_id;
+    it->second =
+        StoredNode(std::move(node));
 
-    // Each node contains an node_id and a NodeRecord object wrapped inside a StoreNode struct
-    nodes_.emplace(
-        node_id,
-        StoredNode(std::move(node)));
-
-    // Store the record of order since its FIFO structure
-    registration_order_.push_back(node_id);
+    // Keep the original registration-order position.
+    // Do NOT push node_id into registration_order_ again.
 
     return Status::OK();
 }

@@ -2,6 +2,7 @@
 
 #include <chrono>
 
+
 #include "dar/serialization/serialization.h"
 
 #include "task.pb.h"
@@ -58,6 +59,30 @@ ControlPlane::ControlPlane(
     : registry_(registry),
       node_manager_(node_manager)
 {
+}
+
+/**
+grpc::Status
+    = did RPC transport work?
+
+dar::Status
+    = did RegisterNode/RemoveNode work?
+ */
+Status ControlPlane::RegisterNode(
+    NodeRecord node)
+{
+    return node_manager_.RegisterNode(
+        std::move(node));
+}
+
+
+Status ControlPlane::RemoveNode(
+    NodeID node_id,
+    std::uint64_t incarnation)
+{
+    return registry_.RemoveNode(
+        node_id,
+        incarnation);
 }
 
 /**

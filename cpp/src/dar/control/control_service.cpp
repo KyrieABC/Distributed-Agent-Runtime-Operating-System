@@ -35,6 +35,141 @@ ControlServiceImpl::ControlServiceImpl(
 {
 }
 
+grpc::Status ControlServiceImpl::RegisterNode(
+    grpc::ServerContext*,
+    const proto::v1::RegisterNodeRequest* request,
+    proto::v1::RegisterNodeResponse* response)
+{
+    if(request == nullptr || response == nullptr)
+    {
+        return grpc::Status(
+            grpc::StatusCode::INTERNAL,
+            "gRPC supplied null request/response");
+    }
+
+    NodeID node_id;
+
+    Status status =
+        serialization::FromProto(
+            request->node().node_id(),
+            &node_id);
+
+    if(!status.ok())
+    {
+        serialization::ToProto(
+            status,
+            response->mutable_status());
+
+        return grpc::Status::OK;
+    }
+
+    ResourceSet total_resources;
+
+    status =
+        serialization::FromProto(
+            request->node().total_resources(),
+            &total_resources);
+
+    if(!status.ok())
+    {
+        serialization::ToProto(
+            status,
+            response->mutable_status());
+
+        return grpc::Status::OK;
+    }
+
+    ResourceSet reported_available;
+
+    status =
+        serialization::FromProto(
+            request->node()
+                .reported_available_resources(),
+            &reported_available);
+
+    if(!status.ok())
+    {
+        serialization::ToProto(
+            status,
+            response->mutable_status());
+
+        return grpc::Status::OK;
+    }
+
+    NodeRecord node;
+
+    node.node_id =
+        node_id;
+
+    node.worker_endpoint =
+        request->node().worker_endpoint();
+
+    node.total_resources =
+        std::move(total_resources);
+
+    node.reported_available =
+        std::move(reported_available);
+
+    node.incarnation =
+        request->node().incarnation();
+
+    // Registration creates a live worker lifetime.
+    //
+    // Heartbeat-driven SUSPECT/DEAD transitions come later.
+    node.state =
+        NodeState::kAlive;
+
+    status =
+        control_plane_.RegisterNode(
+            std::move(node));
+
+    serialization::ToProto(
+        status,
+        response->mutable_status());
+
+    return grpc::Status::OK;
+}
+
+
+grpc::Status ControlServiceImpl::RemoveNode(
+    grpc::ServerContext*,
+    const proto::v1::RemoveNodeRequest* request,
+    proto::v1::RemoveNodeResponse* response)
+{
+    if(request == nullptr || response == nullptr)
+    {
+        return grpc::Status(
+            grpc::StatusCode::INTERNAL,
+            "gRPC supplied null request/response");
+    }
+
+    NodeID node_id;
+
+    Status status =
+        serialization::FromProto(
+            request->node_id(),
+            &node_id);
+
+    if(!status.ok())
+    {
+        serialization::ToProto(
+            status,
+            response->mutable_status());
+
+        return grpc::Status::OK;
+    }
+
+    status =
+        control_plane_.RemoveNode(
+            node_id,
+            request->incarnation());
+
+    serialization::ToProto(
+        status,
+        response->mutable_status());
+
+    return grpc::Status::OK;
+}
 
 grpc::Status ControlServiceImpl::ReportTaskResult(
     grpc::ServerContext*,

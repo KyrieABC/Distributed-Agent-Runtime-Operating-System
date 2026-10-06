@@ -418,6 +418,8 @@ if(DAR_BUILD_TESTS)
             test/phase3/worker_service_test.cpp
 
             test/phase3/cluster_scheduler_test.cpp 
+            test/phase3/node_registry_test.cpp 
+            test/phase3/node_registration_test.cpp
         )
 
         # gives dar_tests two dependencies:

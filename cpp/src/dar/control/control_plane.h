@@ -43,6 +43,7 @@ WorkerService::Stub
 #include <string>
 #include <mutex>
 #include <unordered_map>
+#include <utility>
 
 #include "dar/common/id.h"
 #include "dar/common/status.h"
@@ -113,6 +114,10 @@ public:
     ControlPlane(
         NodeRegistry& registry,
         NodeManager& node_manager);
+
+    Status RegisterNode(NodeRecord node);
+
+    Status RemoveNode(NodeID node_id, std::uint64_t incarnation);
 
     Status SubmitTask(
         const SubmitTaskSpec& submission,

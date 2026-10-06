@@ -16,6 +16,18 @@ public:
     explicit ControlServiceImpl(
         ControlPlane& control_plane);
 
+    grpc::Status RegisterNode(
+        grpc::ServerContext* context,
+        const proto::v1::RegisterNodeRequest* request,
+        proto::v1::RegisterNodeResponse* response
+    ) override;
+
+    grpc::Status RemoveNode(
+        grpc::ServerContext* context,
+        const proto::v1::RemoveNodeRequest* request,
+        proto::v1::RemoveNodeResponse* response
+    ) override;
+
     grpc::Status ReportTaskResult(
         grpc::ServerContext* context,
         const proto::v1::ReportTaskResultRequest* request,

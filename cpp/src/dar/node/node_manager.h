@@ -1,6 +1,28 @@
 #pragma once
 
+/**
+Phase 3 Stage 5I:
+                    FIRST DELIVERY
+ControlPlane ------------------------------> Worker
+                  T1, E1
+
+                    Worker admits E1
+                    Runtime::Submit()
+                          │
+                          ▼
+                      executes once
+
+             response lost / deadline
+ControlPlane <-------------- X
+
+
+                    REDELIVERY
+ControlPlane ------------------------------> Worker
+                  T1, E1
+                     SAME E1
+ */
 #include <chrono>
+#include <cstdint>
 
 #include "dar/common/status.h"
 #include "dar/node/node_registry.h"
@@ -41,9 +63,14 @@ public:
         std::chrono::milliseconds timeout);
 
 private:
+    // attempt 1 = original RPC
+    // attempt 2 = one redelivery
+    static constexpr std::size_t kMaxLaunchAttempts = 2;    
+
     NodeRegistry& registry_;
 
     RpcClient& rpc_client_;
+
 };
 
 }  // namespace dar

@@ -424,6 +424,7 @@ if(DAR_BUILD_TESTS)
             test/phase3/heartbeat_test.cpp
             test/phase3/failure_detector_test.cpp
             test/phase3/remote_cancellation_test.cpp
+            test/phase3/cancel_requested_test.cpp
         )
 
         # gives dar_tests two dependencies:

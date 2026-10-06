@@ -81,9 +81,28 @@ struct SubmitTaskResult
     NodeID node_id;
 };
 
+/**
+                    ┌──────────────→ KSucceeded
+                    │
+KRunning ───────────┼──────────────→ KFailed
+   │                │
+   │ Cancel RPC     └──────────────→ KCanceled
+   │ accepted
+   ▼
+KCancelRequested ──────────────────→ KSucceeded
+        │
+        ├──────────────────────────→ KFailed
+        │
+        └──────────────────────────→ KCanceled
+ */
 enum class DistributedTaskState
 {
     KRunning,
+
+    // A cancellation request was successfully delivered to the
+    // worker, but the execution has not reached a terminal state yet.
+    KCancelRequested,
+
     KSucceeded,
     KFailed,
     KCanceled

@@ -318,6 +318,25 @@ Status ControlPlane::SubmitTask(
     return Status::OK();
 }
 
+/**
+ControlPlane                         Worker
+
+CancelTask()
+  │
+  ├─ snapshot KRunning
+  │
+  ├──────── CancelTask RPC ──────────→
+  │
+  │                              handler finishes
+  │                                  │
+  │      ←──── ReportTaskResult ─────┤
+  │
+ReportTaskResult:
+KRunning → KSucceeded
+  │
+  │
+Cancel RPC returns OK
+ */
 Status ControlPlane::CancelTask(
     TaskID task_id,
     std::chrono::milliseconds timeout)
@@ -331,7 +350,9 @@ Status ControlPlane::CancelTask(
     DistributedTaskRecord record;
 
     // --------------------------------------------------------
-    // 1. Snapshot authoritative task routing information.
+    // 1. Snapshot authoritative routing information.
+    //
+    // Do not hold tasks_mu_ across network I/O.
     // --------------------------------------------------------
 
     {
@@ -353,12 +374,22 @@ Status ControlPlane::CancelTask(
                 "distributed task is already terminal");
         }
 
-        record =
-            it->second;
+        // Repeated cancellation while cancellation is already
+        // outstanding is idempotent from the control-plane view.
+        //
+        // We do not need to send another network request merely
+        // because the caller repeated CancelTask().
+        if(it->second.state ==
+           DistributedTaskState::KCancelRequested)
+        {
+            return Status::OK();
+        }
+
+        record = it->second;
     }
 
     // --------------------------------------------------------
-    // 2. Verify that the same worker lifetime still exists.
+    // 2. Verify worker lifetime.
     // --------------------------------------------------------
 
     NodeRecord node;
@@ -387,16 +418,78 @@ Status ControlPlane::CancelTask(
     }
 
     // --------------------------------------------------------
-    // 3. Send cancellation request to worker.
+    // 3. Deliver cancellation to worker.
     //
-    // DO NOT hold tasks_mu_ across network I/O.
+    // Successful RPC means:
+    //
+    //     cancellation request accepted
+    //
+    // NOT:
+    //
+    //     execution is terminally cancelled
     // --------------------------------------------------------
 
-    return node_manager_.CancelTask(
-        node,
-        record.task_id,
-        record.execution_id,
-        timeout);
+    status =
+        node_manager_.CancelTask(
+            node,
+            record.task_id,
+            record.execution_id,
+            timeout);
+
+    if(!status.ok())
+    {
+        // Delivery/worker rejection failed.
+        //
+        // Keep distributed state KRunning because the control
+        // plane cannot claim cancellation was accepted.
+        return status;
+    }
+
+    // --------------------------------------------------------
+    // 4. Publish CANCEL_REQUESTED.
+    //
+    // Important:
+    // The task may have completed concurrently while the RPC was
+    // in flight, so re-check authoritative state under the lock.
+    // --------------------------------------------------------
+
+    {
+        std::lock_guard<std::mutex> lock(
+            tasks_mu_);
+
+        const auto it =
+            tasks_.find(task_id);
+
+        if(it == tasks_.end())
+        {
+            return Status::NotFound(
+                "distributed task disappeared during cancellation");
+        }
+
+        DistributedTaskRecord& current =
+            it->second;
+
+        // Guard against accidentally mutating another execution
+        // if retry/reconstruction is added later.
+        if(current.execution_id !=
+           record.execution_id)
+        {
+            return Status::FailedPrecondition(
+                "task execution changed during cancellation");
+        }
+
+        // A completion may have arrived while CancelTask RPC was
+        // in flight. Terminal completion wins that race.
+        if(IsTerminal(current.state))
+        {
+            return Status::OK();
+        }
+
+        current.state =
+            DistributedTaskState::KCancelRequested;
+    }
+
+    return Status::OK();
 }
 
 // changes task state, RELEASES cluster resources (what stage 4 was missing)
@@ -556,8 +649,20 @@ Status ControlPlane::HandleNodeDead(
             continue;
         }
 
-        if(record.state !=
-           DistributedTaskState::KRunning)
+        /**
+         * Changes made form 5G
+         * otherwise:
+Cancel requested
+      ↓
+KCancelRequested
+      ↓
+worker dies
+      ↓
+HandleNodeDead skips it
+      ↓
+task stuck forever + resource leak
+         */
+        if(IsTerminal(record.state))
         {
             continue;
         }
